@@ -1,0 +1,1155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GMC + Pattern — sphere × halftone field</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="preload" href="/assets/FocalText-Regular-Sa_5VjK-.otf" as="fetch" type="font/otf" crossorigin="anonymous" />
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.11.3/lib/p5.min.js"></script>
+  <!-- npm 1.3.4 ignores axis coords in getPath; master applies gvar/CFF2 via options.variation -->
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #E5ECE7;
+      --panel: rgba(252, 252, 252, 0.94);
+      --border: rgba(64, 55, 0, 0.14);
+      --text: #000000;
+      --muted: #98AFAC;
+      --accent: #5718C0;
+      --mono: "DM Mono", ui-monospace, monospace;
+      --sans: "DM Sans", system-ui, sans-serif;
+      --fs: 9px;
+      --lh: 1.45;
+    }
+    html, body { width: 100%; height: 100%; overflow: hidden; }
+    body {
+      font-family: var(--sans);
+      font-size: var(--fs);
+      line-height: var(--lh);
+      color: var(--text);
+      background: var(--bg);
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 14px;
+      min-height: 40px;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(180deg, #ffffff 0%, #D9D7CC 100%);
+      z-index: 10;
+    }
+    .traffic { display: flex; gap: 5px; margin-right: 6px; }
+    .tl {
+      width: 10px; height: 10px; border-radius: 50%;
+      border: 1px solid rgba(0,0,0,0.15);
+    }
+    .tl-r { background: radial-gradient(circle at 35% 35%, #ff9a9a, #e04040); }
+    .tl-y { background: radial-gradient(circle at 35% 35%, #ffe9a0, #d4a020); }
+    .tl-g { background: radial-gradient(circle at 35% 35%, #9ae89a, #38a840); }
+    .logo { font-size: 12px; font-weight: 500; letter-spacing: -0.02em; }
+    .logo span { font-weight: 400; color: var(--muted); }
+    .header-meta {
+      font-family: var(--mono);
+      font-size: 8px;
+      font-weight: 300;
+      color: var(--muted);
+      margin-left: 4px;
+    }
+    .header-actions {
+      margin-left: auto;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+      justify-content: flex-end;
+      max-width: min(720px, 55vw);
+      padding: 2px 0;
+    }
+    .header-actions .btn {
+      padding: 7px 12px;
+      line-height: 1.35;
+    }
+    .btn {
+      font-family: var(--mono);
+      font-size: 8.5px;
+      padding: 5px 11px;
+      border-radius: 3px;
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--text);
+      cursor: pointer;
+      transition: background 0.12s, border-color 0.12s;
+    }
+    .btn:hover { background: #fafafa; border-color: rgba(0,0,0,0.22); }
+    .btn:active { background: #eee; }
+    .btn.primary {
+      background: var(--accent);
+      color: #ffffff;
+      border-color: #2B0C60;
+    }
+    .btn.primary:hover { background: #4514A3; border-color: #2B0C60; }
+    .btn.danger {
+      color: #EC0649;
+      border-color: rgba(236, 6, 73, 0.35);
+    }
+    .btn.danger:hover { background: #FFF0F4; border-color: rgba(236, 6, 73, 0.5); }
+    .workspace {
+      display: grid;
+      grid-template-columns: minmax(288px, 360px) 1fr;
+      min-height: 0;
+    }
+    .panel {
+      border-right: 1px solid var(--border);
+      background: var(--panel);
+      overflow-y: auto;
+      padding: 12px 14px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .panel h2 {
+      font-family: var(--mono);
+      font-size: 8px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .field { display: flex; flex-direction: column; gap: 4px; }
+    .field label {
+      font-family: var(--mono);
+      font-size: 8px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    input[type="text"], textarea {
+      font-family: var(--mono);
+      font-size: 10px;
+      padding: 7px 9px;
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      background: #fff;
+      color: var(--text);
+      width: 100%;
+    }
+    textarea { resize: vertical; min-height: 52px; white-space: pre-wrap; }
+    select {
+      font-family: var(--mono);
+      font-size: 10px;
+      padding: 6px 8px;
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      background: #fff;
+      color: var(--text);
+      width: 100%;
+    }
+    input[type="range"] { width: 100%; accent-color: #5718C0; }
+    input[type="color"] { width: 100%; height: 34px; padding: 2px; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; background: #fff; }
+    input[type="file"] {
+      font-family: var(--mono);
+      font-size: 8px;
+      width: 100%;
+    }
+    .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+    .row .btn { flex: 1; min-width: 0; }
+    .hint {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+    .val {
+      font-family: var(--mono);
+      font-size: 8px;
+      color: var(--text);
+      min-width: 36px;
+      text-align: right;
+    }
+    .range-row { display: grid; grid-template-columns: 1fr 40px; gap: 8px; align-items: center; }
+    #canvas-wrap {
+      position: relative;
+      --sphere-r: 38vmin;
+      --sphere-x: 50%;
+      --sphere-y: 48%;
+      min-height: 0;
+    }
+    #canvas-wrap.bg-checker {
+      background-color: #ffffff;
+      background-image:
+        linear-gradient(45deg, #d4d4d4 25%, transparent 25%),
+        linear-gradient(-45deg, #d4d4d4 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #d4d4d4 75%),
+        linear-gradient(-45deg, transparent 75%, #d4d4d4 75%);
+      background-size: 16px 16px;
+      background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+    }
+    #canvas-wrap.bg-white {
+      background: #ffffff;
+    }
+    /* Inner shapes default to visiblePainted; force no hit target. */
+    #canvas-wrap #blobs-back-layer {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      isolation: isolate;
+    }
+    #canvas-wrap #text-layer {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      isolation: isolate;
+    }
+    #canvas-wrap #blobs-front-layer {
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      isolation: isolate;
+      pointer-events: none;
+    }
+    #canvas-wrap #vas-c,
+    #canvas-wrap #blobs-front-layer #vas-c-front {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      object-fit: cover;
+      clip-path: circle(var(--sphere-r) at var(--sphere-x) var(--sphere-y));
+    }
+    #canvas-wrap #vas-c *,
+    #canvas-wrap #blobs-front-layer #vas-c-front * {
+      pointer-events: none !important;
+    }
+    #canvas-wrap #text-layer canvas.p5Canvas {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      display: block;
+      width: 100% !important;
+      height: 100% !important;
+      background: transparent !important;
+      pointer-events: auto;
+    }
+    #canvas-wrap #sphere-glass {
+      position: absolute;
+      inset: 0;
+      z-index: 3;
+      pointer-events: none;
+      clip-path: circle(var(--sphere-r) at var(--sphere-x) var(--sphere-y));
+    }
+    #canvas-wrap #sphere-glass .glass-frost-layer {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: radial-gradient(
+        circle var(--sphere-r) at var(--sphere-x) var(--sphere-y),
+        rgba(255, 255, 255, var(--glass-frost, 0)) 0%,
+        rgba(255, 255, 255, var(--glass-frost-mid, 0)) 42%,
+        rgba(255, 255, 255, 0) 78%
+      );
+    }
+    #canvas-wrap #sphere-glass::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: radial-gradient(
+        circle var(--sphere-r) at var(--sphere-x) var(--sphere-y),
+        transparent 70%,
+        rgba(0, 0, 0, 0.05) 92%,
+        rgba(0, 0, 0, 0.08) 100%
+      );
+      opacity: var(--glass-rim, 0.35);
+    }
+    #canvas-wrap #sphere-glass::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(
+        circle calc(var(--sphere-r) * 0.5) at
+          calc(var(--sphere-x) - var(--sphere-r) * 0.16)
+          calc(var(--sphere-y) - var(--sphere-r) * 0.2),
+        rgba(255, 255, 255, 0.75) 0%,
+        rgba(255, 255, 255, 0) 55%
+      );
+      opacity: var(--glass-shine, 0);
+      pointer-events: none;
+    }
+    #canvas-wrap #sphere-glass.is-hidden { display: none; }
+    #canvas-wrap #sphere-glass.has-mask-stroke {
+      box-shadow: inset 0 0 0 1px #000;
+    }
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+    #canvas-palette,
+    #canvas-glass-controls,
+    #canvas-export-controls {
+      position: absolute;
+      z-index: 5;
+      pointer-events: none;
+      max-height: min(72vh, calc(100% - 20px));
+    }
+    #canvas-palette { top: 10px; left: 10px; }
+    #canvas-glass-controls {
+      bottom: 10px;
+      left: 10px;
+      width: min(240px, calc(100% - 20px));
+      max-height: min(52vh, calc(100% - 20px));
+    }
+    #canvas-export-controls {
+      bottom: 10px;
+      right: 10px;
+      width: min(240px, calc(100% - 20px));
+      max-height: min(52vh, calc(100% - 20px));
+    }
+    .canvas-dial-hud .dialkit-root {
+      pointer-events: auto;
+      max-height: inherit;
+    }
+    .canvas-dial-hud .dialkit-panel-inline {
+      position: static;
+      z-index: auto;
+      max-height: inherit;
+    }
+    .canvas-dial-hud .dialkit-panel-inner {
+      max-height: inherit;
+      overflow-y: auto;
+      padding-bottom: 10px;
+    }
+    .canvas-dial-hud .dialkit-folder-root > .dialkit-panel-header {
+      cursor: default;
+      padding-bottom: 4px;
+      margin-bottom: 8px;
+    }
+    .canvas-dial-hud .dialkit-folder-title-root {
+      font-size: 13px;
+    }
+    .canvas-dial-hud .dialkit-folder-inner {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .canvas-dial-hud .field label {
+      font-size: 11px;
+      color: var(--dial-text-label);
+      text-transform: none;
+      letter-spacing: 0;
+    }
+    .canvas-dial-hud .vas-check label {
+      font-size: 12px;
+      color: var(--dial-text-primary);
+    }
+    .canvas-dial-hud .hint {
+      font-size: 10px;
+      line-height: 1.35;
+      color: var(--dial-text-tertiary);
+      margin-top: 2px;
+    }
+    .canvas-dial-hud input[type="range"] {
+      accent-color: #5718C0;
+    }
+    #canvas-palette-list {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .palette-option {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 6px;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      background: transparent;
+      cursor: pointer;
+      text-align: left;
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 400;
+      color: var(--dial-text-secondary);
+      line-height: 1.2;
+    }
+    .palette-option:hover {
+      background: var(--dial-surface-hover);
+      color: var(--dial-text-primary);
+    }
+    .palette-option.is-active {
+      border-color: var(--dial-border-hover);
+      background: var(--dial-surface-active);
+      color: var(--dial-text-primary);
+    }
+    .palette-swatches {
+      display: flex;
+      flex-shrink: 0;
+      border-radius: 3px;
+      overflow: hidden;
+      border: 1px solid rgba(0, 0, 0, 0.1);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+    }
+    .palette-swatch {
+      width: 8px;
+      height: 16px;
+    }
+    .palette-label {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 108px;
+    }
+    .canvas-dial-hud .field {
+      gap: 2px;
+    }
+    .canvas-dial-hud .export-size-row {
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+    }
+    .canvas-dial-hud .export-size-row .btn {
+      flex: 1;
+      min-width: 0;
+      padding: 5px 6px;
+      font-size: 10px;
+    }
+    .canvas-dial-hud .export-size-row .btn.is-active {
+      border-color: #5718C0;
+      background: rgba(87, 24, 192, 0.08);
+      color: #5718C0;
+    }
+    .canvas-dial-hud .export-actions {
+      display: flex;
+      gap: 4px;
+      margin-top: 2px;
+    }
+    .canvas-dial-hud .export-actions .btn {
+      flex: 1;
+      padding: 6px 8px;
+      font-size: 11px;
+    }
+    #export-progress {
+      width: 100%;
+      height: 4px;
+      border-radius: 2px;
+      background: rgba(0, 0, 0, 0.08);
+      overflow: hidden;
+      margin-top: 2px;
+    }
+    #export-progress-bar {
+      height: 100%;
+      width: 0%;
+      background: #5718C0;
+      transition: width 0.12s ease;
+    }
+    #export-status {
+      font-family: var(--mono);
+      font-size: 7px;
+      color: var(--muted);
+      min-height: 1.2em;
+      line-height: 1.35;
+    }
+    .vaz-grid2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+    .vaz-grid2 .full { grid-column: 1 / -1; }
+    .vas-check {
+      flex-direction: row;
+      align-items: center;
+      gap: 8px;
+    }
+    .vas-check input { width: auto; accent-color: #5718C0; }
+    .vas-check label { text-transform: none; letter-spacing: 0; font-size: 9px; color: var(--text); }
+    .kbd {
+      font-family: var(--mono);
+      font-size: 7px;
+      padding: 1px 4px;
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      background: #fff;
+    }
+  </style>
+  <script type="module" crossorigin src="/assets/index-tShBbUVM.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-CiHY_Bh6.css">
+</head>
+<body>
+  <header>
+    <div class="traffic" aria-hidden="true">
+      <span class="tl tl-r"></span><span class="tl tl-y"></span><span class="tl tl-g"></span>
+    </div>
+    <div class="logo">GMC + Pattern</div>
+    <div class="header-actions">
+      <button type="button" class="btn" id="copy-svg-type" title="Lettering only, sphere clip + outline">Copy SVG (Type Sphere)</button>
+      <button type="button" class="btn" id="copy-svg-halftone" title="Halftone ellipses only (back + front layer)">Copy SVG (Blobs / halftone dots)</button>
+      <button type="button" class="btn primary" id="copy-svg-both" title="Checker, dots, type, front dots — one file">Copy SVG (Both)</button>
+      <span class="header-meta" id="export-feedback" style="flex-basis:100%;text-align:right;margin-top:2px;min-height:1em"></span>
+    </div>
+  </header>
+  <div class="workspace">
+    <aside class="panel">
+      <section>
+        <h2>Type</h2>
+        <div class="field">
+          <label for="text-input">String</label>
+          <textarea id="text-input" spellcheck="false">GMC</textarea>
+        </div>
+        <div class="field" style="margin-top:8px">
+          <label for="font-file">Font upload</label>
+          <input type="file" id="font-file" accept=".ttf,.otf,.woff,.woff2,.TTF,.OTF,.WOFF,.WOFF2" />
+          <div class="hint" id="font-status">Loading default…</div>
+        </div>
+        <div class="field" style="margin-top:8px">
+          <label for="saved-font-select">Saved in this browser</label>
+          <select id="saved-font-select" aria-label="Saved fonts">
+            <option value="__bundled__">Bundled · Inter VF</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="save-font-name">Save upload locally</label>
+          <div class="row">
+            <input type="text" id="save-font-name" placeholder="Name (e.g. Display Bold)" autocomplete="off" style="flex:1;min-width:0" />
+            <button type="button" class="btn" id="save-font-btn">Save</button>
+          </div>
+          <div class="row" style="margin-top:6px">
+            <button type="button" class="btn danger" id="delete-saved-font">Remove selected</button>
+          </div>
+          <p class="hint">Stored in IndexedDB on your machine only — not uploaded. The newest saved font loads by default; saving with the same name again replaces that slot and bumps it to “most recent.”</p>
+        </div>
+        <section id="vf-section" hidden>
+          <h2 style="margin-top:10px">Variable font axes</h2>
+          <div id="vf-axes"></div>
+          <p class="hint" id="vf-hint"></p>
+        </section>
+      </section>
+      <section>
+        <h2>Motion</h2>
+        <div class="row" style="margin-bottom:6px">
+          <button type="button" class="btn primary" id="toggle-play">Play</button>
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="angle-slider">Angle (drag to park)</label>
+            <span class="val" id="angle-label">359°</span>
+          </div>
+          <input type="range" id="angle-slider" min="0" max="359" value="359" step="1" />
+        </div>
+        <div class="field">
+          <label>Snap (halftone field grid)</label>
+          <div class="row">
+            <button type="button" class="btn" id="snap-0">0°</button>
+            <button type="button" class="btn" id="snap-45">45°</button>
+            <button type="button" class="btn" id="snap-90">90°</button>
+            <button type="button" class="btn" id="snap-180">180°</button>
+          </div>
+        </div>
+        <div class="field vas-check">
+          <input type="checkbox" id="vas-toggle" checked />
+          <label for="vas-toggle">Show halftone field inside sphere</label>
+        </div>
+        <div class="field vas-check">
+          <input type="checkbox" id="sphere-mask-stroke" />
+          <label for="sphere-mask-stroke">Black stroke on sphere mask</label>
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="speed">Spin speed</label>
+            <span class="val" id="speed-val">—</span>
+          </div>
+          <input type="range" id="speed" min="0" max="40" value="0" step="1" />
+        </div>
+        <p class="hint"><span class="kbd">Space</span> play/pause · <span class="kbd">←</span><span class="kbd">→</span> nudge 15° when paused</p>
+      </section>
+      <section>
+        <h2>Sphere & lens</h2>
+        <div class="field">
+          <div class="range-row">
+            <label for="font-size">Font size</label>
+            <span class="val" id="fs-val">—</span>
+          </div>
+          <input type="range" id="font-size" min="40" max="260" value="244" step="2" />
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="type-color">Type color</label>
+            <span class="val" style="min-width:0" aria-hidden="true"></span>
+          </div>
+          <input type="color" id="type-color" value="#5718C0" title="Fill color for lettering" />
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="arc-h">Horizontal arc</label>
+            <span class="val" id="arc-h-val">—</span>
+          </div>
+          <input type="range" id="arc-h" min="80" max="360" value="360" step="5" />
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="arc-v">Vertical arc</label>
+            <span class="val" id="arc-v-val">—</span>
+          </div>
+          <input type="range" id="arc-v" min="20" max="120" value="120" step="5" />
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="focal">Focal (fisheye)</label>
+            <span class="val" id="focal-val">—</span>
+          </div>
+          <input type="range" id="focal" min="200" max="900" value="740" step="10" />
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="tilt">Tilt X</label>
+            <span class="val" id="tilt-val">—</span>
+          </div>
+          <input type="range" id="tilt" min="-80" max="85" value="14" step="1" />
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="tilt-y">Tilt Y</label>
+            <span class="val" id="tilt-y-val">—</span>
+          </div>
+          <input type="range" id="tilt-y" min="-80" max="85" value="0" step="1" />
+        </div>
+        <p class="hint" style="margin-top:6px">Drag on the sphere to adjust tilt X/Y (same limits as the sliders). Double-click the sphere to reset tilt to defaults.</p>
+      </section>
+      <section>
+        <h2>Depth from center</h2>
+        <p class="hint" style="margin-bottom:8px">Camera moves the whole bubble; radial scales zoom type or field in screen space from the sphere center; type Z pulls lettering along the view; field grain scales checker/dots.</p>
+        <div class="field">
+          <div class="range-row">
+            <label for="cam">Camera distance</label>
+            <span class="val" id="cam-val">—</span>
+          </div>
+          <input type="range" id="cam" min="320" max="900" value="510" step="10" />
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="type-radial">Type · radial scale</label>
+            <span class="val" id="type-radial-val">1.00</span>
+          </div>
+          <input type="range" id="type-radial" min="50" max="160" value="100" step="1" />
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="type-zoff">Type · depth pull (Z)</label>
+            <span class="val" id="type-zoff-val">0</span>
+          </div>
+          <input type="range" id="type-zoff" min="-160" max="160" value="0" step="2" />
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="field-radial">Field · radial scale</label>
+            <span class="val" id="field-radial-val">1.00</span>
+          </div>
+          <input type="range" id="field-radial" min="50" max="160" value="100" step="1" />
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="field-el-scale">Field · grain (cells &amp; dots)</label>
+            <span class="val" id="field-el-scale-val">1.00</span>
+          </div>
+          <input type="range" id="field-el-scale" min="40" max="200" value="100" step="1" />
+        </div>
+      </section>
+      <section>
+        <h2>Echo / strobe</h2>
+        <div class="field">
+          <div class="range-row">
+            <label for="echo-n">Layers</label>
+            <span class="val" id="echo-n-val">—</span>
+          </div>
+          <input type="range" id="echo-n" min="0" max="14" value="0" step="1" />
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="echo-step">Separation</label>
+            <span class="val" id="echo-step-val">—</span>
+          </div>
+          <input type="range" id="echo-step" min="5" max="120" value="5" step="1" />
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="echo-a">Opacity</label>
+            <span class="val" id="echo-a-val">—</span>
+          </div>
+          <input type="range" id="echo-a" min="5" max="80" value="5" step="1" />
+        </div>
+      </section>
+      <section>
+        <h2>Displacement map</h2>
+        <p class="hint" style="margin-bottom:8px">Smooth field + optional checker sign per cell. Drift speed only matters when time drift &gt; 0.</p>
+        <div class="field">
+          <div class="range-row">
+            <label for="displacement">Amount</label>
+            <span class="val" id="displacement-val">—</span>
+          </div>
+          <input type="range" id="displacement" min="0" max="100" value="0" step="1" />
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="displacement-scale">Scale (detail)</label>
+            <span class="val" id="displacement-scale-val">—</span>
+          </div>
+          <input type="range" id="displacement-scale" min="5" max="100" value="48" step="1" />
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="displacement-anim">Time drift</label>
+            <span class="val" id="displacement-anim-val">—</span>
+          </div>
+          <input type="range" id="displacement-anim" min="0" max="100" value="0" step="1" />
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="displacement-speed">Drift speed</label>
+            <span class="val" id="displacement-speed-val">—</span>
+          </div>
+          <input type="range" id="displacement-speed" min="0" max="100" value="50" step="1" />
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="displacement-checker">Checker mix</label>
+            <span class="val" id="displacement-checker-val">—</span>
+          </div>
+          <input type="range" id="displacement-checker" min="0" max="100" value="0" step="1" />
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="displacement-checker-size">Checker cell size</label>
+            <span class="val" id="displacement-checker-size-val">—</span>
+          </div>
+          <input type="range" id="displacement-checker-size" min="8" max="100" value="45" step="1" />
+        </div>
+      </section>
+      <section>
+        <h2>Output</h2>
+        <div class="field vas-check">
+          <input type="checkbox" id="canvas-bg-checker" checked />
+          <label for="canvas-bg-checker">Transparency checker (else white)</label>
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="curve">Curve fidelity</label>
+            <span class="val" id="curve-val">—</span>
+          </div>
+          <input type="range" id="curve" min="4" max="24" value="24" step="1" />
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="pad">Circle margin</label>
+            <span class="val" id="pad-val">—</span>
+          </div>
+          <input type="range" id="pad" min="70" max="100" value="92" step="1" />
+        </div>
+      </section>
+      <section>
+        <h2>Halftone field</h2>
+        <p class="hint" style="margin-bottom:8px">Checker + halftone blobs fill the sphere; type draws on top. Regenerate for a new seed. Controls here (including front-layer dots and field seed) are saved in localStorage for this browser.</p>
+        <div class="field vas-check">
+          <input type="checkbox" id="vaz-sphere" checked />
+          <label for="vaz-sphere">Map field to 3D sphere (longitude · spin · shared bulge center)</label>
+        </div>
+        <div class="row" style="margin-bottom:6px">
+          <button type="button" class="btn primary" id="vaz-gen">Generate field ↵</button>
+        </div>
+        <div class="field">
+          <label>Target size &amp; fit</label>
+          <div class="vaz-grid2">
+            <input type="number" id="vaz-tw" min="32" max="8192" value="1200" step="1" title="Target width" />
+            <input type="number" id="vaz-th" min="32" max="8192" value="1200" step="1" title="Target height" />
+            <input type="number" id="vaz-tcell" class="full" min="4" max="256" value="32" step="1" title="Approx cell px" />
+          </div>
+          <button type="button" class="btn" id="vaz-fit" style="margin-top:6px;width:100%">Fit columns / rows / cell</button>
+          <p class="hint" style="margin-top:4px">SVG viewBox <span id="vaz-grid-out">—</span> px (scaled to viewport)</p>
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="vaz-cols">Columns</label>
+            <span class="val" id="vaz-v-cols">36</span>
+          </div>
+          <input type="range" id="vaz-cols" min="8" max="256" value="36" step="1" />
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="vaz-rows">Rows</label>
+            <span class="val" id="vaz-v-rows">36</span>
+          </div>
+          <input type="range" id="vaz-rows" min="8" max="256" value="36" step="1" />
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="vaz-cell">Cell size</label>
+            <span class="val" id="vaz-v-cell">32</span>
+          </div>
+          <input type="range" id="vaz-cell" min="4" max="128" value="32" step="1" />
+        </div>
+        <div class="field">
+          <label for="vaz-checker">Checker</label>
+          <select id="vaz-checker">
+            <option value="bw">Black / white</option>
+            <option value="dark">Dark / darker</option>
+            <option value="light" selected>Light / lighter</option>
+            <option value="color">Color tinted</option>
+          </select>
+        </div>
+        <div class="field vas-check">
+          <label class="row" style="align-items: center; gap: 8px; cursor: pointer;">
+            <input type="checkbox" id="vaz-checker-grid" checked />
+            <span>Show checker grid</span>
+          </label>
+          <p class="hint">Off: solid field (lighter tone from your checker preset); halftone dots unchanged.</p>
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="vaz-checkervar">Checker variance</label>
+            <span class="val" id="vaz-v-checkervar">0.12</span>
+          </div>
+          <input type="range" id="vaz-checkervar" min="0" max="1" value="0.12" step="0.01" />
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="vaz-cvar">Color variety</label>
+            <span class="val" id="vaz-v-cvar">0.65</span>
+          </div>
+          <input type="range" id="vaz-cvar" min="0" max="1" value="0.65" step="0.01" />
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="vaz-blobs">Blob count</label>
+            <span class="val" id="vaz-v-blobs">4</span>
+          </div>
+          <input type="range" id="vaz-blobs" min="1" max="14" value="4" step="1" />
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="vaz-rmin">Min radius</label>
+            <span class="val" id="vaz-v-rmin">0.16</span>
+          </div>
+          <input type="range" id="vaz-rmin" min="0.05" max="0.45" value="0.16" step="0.01" />
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="vaz-rmax">Max radius</label>
+            <span class="val" id="vaz-v-rmax">0.36</span>
+          </div>
+          <input type="range" id="vaz-rmax" min="0.1" max="0.65" value="0.36" step="0.01" />
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="vaz-shape">Blob shape</label>
+            <span class="val" id="vaz-v-shape">1.00</span>
+          </div>
+          <input type="range" id="vaz-shape" min="0.5" max="3" value="1" step="0.1" />
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="vaz-soft">Edge softness</label>
+            <span class="val" id="vaz-v-soft">2.20</span>
+          </div>
+          <input type="range" id="vaz-soft" min="0.8" max="6" value="2.2" step="0.1" />
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="vaz-mega">Mega blobs</label>
+            <span class="val" id="vaz-v-mega">2</span>
+          </div>
+          <input type="range" id="vaz-mega" min="0" max="6" value="2" step="1" />
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="vaz-megascale">Mega scale</label>
+            <span class="val" id="vaz-v-megascale">0.52</span>
+          </div>
+          <input type="range" id="vaz-megascale" min="0.25" max="1" value="0.52" step="0.01" />
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="vaz-lobes">Mega lobes</label>
+            <span class="val" id="vaz-v-lobes">4</span>
+          </div>
+          <input type="range" id="vaz-lobes" min="2" max="8" value="4" step="1" />
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="vaz-lscatter">Lobe scatter</label>
+            <span class="val" id="vaz-v-lscatter">0.55</span>
+          </div>
+          <input type="range" id="vaz-lscatter" min="0.1" max="1" value="0.55" step="0.01" />
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="vaz-megashape">Mega shape</label>
+            <span class="val" id="vaz-v-megashape">1.00</span>
+          </div>
+          <input type="range" id="vaz-megashape" min="0.5" max="4" value="1" step="0.1" />
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="vaz-dotmax">Max dot</label>
+            <span class="val" id="vaz-v-dotmax">0.82</span>
+          </div>
+          <input type="range" id="vaz-dotmax" min="0.3" max="1" value="0.82" step="0.01" />
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="vaz-dotmin">Min dot</label>
+            <span class="val" id="vaz-v-dotmin">0.05</span>
+          </div>
+          <input type="range" id="vaz-dotmin" min="0" max="0.3" value="0.05" step="0.01" />
+        </div>
+        <div class="field">
+          <label for="vaz-warp">Depth warp</label>
+          <select id="vaz-warp">
+            <option value="none" selected>— none —</option>
+            <option value="bulge">Bulge</option>
+            <option value="tunnel">Tunnel</option>
+            <option value="wave_h">Wave H</option>
+            <option value="wave_v">Wave V</option>
+            <option value="saddle">Saddle</option>
+          </select>
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="vaz-warpstr">Warp strength</label>
+            <span class="val" id="vaz-v-warpstr">0.45</span>
+          </div>
+          <input type="range" id="vaz-warpstr" min="0" max="1" value="0.45" step="0.01" />
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="vaz-warpcx">Warp center X</label>
+            <span class="val" id="vaz-v-warpcx">0.50</span>
+          </div>
+          <input type="range" id="vaz-warpcx" min="0" max="1" value="0.5" step="0.01" />
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="vaz-warpcy">Warp center Y</label>
+            <span class="val" id="vaz-v-warpcy">0.50</span>
+          </div>
+          <input type="range" id="vaz-warpcy" min="0" max="1" value="0.5" step="0.01" />
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="vaz-warpsz">Size perspective</label>
+            <span class="val" id="vaz-v-warpsz">0.45</span>
+          </div>
+          <input type="range" id="vaz-warpsz" min="0" max="1" value="0.45" step="0.01" />
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="vaz-bulge">Comp. bulge</label>
+            <span class="val" id="vaz-v-bulge">0.00</span>
+          </div>
+          <input type="range" id="vaz-bulge" min="-1" max="1" value="0" step="0.01" />
+        </div>
+        <h2 style="margin-top:14px">Halftone vs type</h2>
+        <p class="hint" style="margin-bottom:8px">Some dots can draw <strong>on top</strong> of the letters (second SVG layer). Checker stays behind. Seed-stable random + optional bias toward “big” dots; run-off nudges outward from center.</p>
+        <div class="field">
+          <div class="range-row">
+            <label for="vaz-front-pct">Dots in front (amount)</label>
+            <span class="val" id="vaz-v-front-pct">0</span>
+          </div>
+          <input type="range" id="vaz-front-pct" min="0" max="100" value="0" step="1" />
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="vaz-front-bias">Front · bias to strong dots</label>
+            <span class="val" id="vaz-v-front-bias">0</span>
+          </div>
+          <input type="range" id="vaz-front-bias" min="0" max="100" value="0" step="1" />
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="vaz-front-runoff">Front · run-off (outward)</label>
+            <span class="val" id="vaz-v-front-runoff">0</span>
+          </div>
+          <input type="range" id="vaz-front-runoff" min="0" max="100" value="0" step="1" />
+        </div>
+      </section>
+      <section>
+        <h2>Presets</h2>
+        <div class="field">
+          <label for="preset-select">Load</label>
+          <select id="preset-select" aria-label="Effect presets">
+            <option value="">— Choose preset —</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="preset-name">Save current look</label>
+          <div class="row">
+            <input type="text" id="preset-name" placeholder="Name (e.g. Wide strobe)" autocomplete="off" style="flex:1;min-width:0" />
+            <button type="button" class="btn primary" id="save-preset-btn">Save</button>
+          </div>
+          <div class="row" style="margin-top:6px">
+            <button type="button" class="btn danger" id="delete-preset-btn">Delete selected</button>
+          </div>
+          <div class="row" style="margin-top:6px">
+            <button type="button" class="btn" id="export-presets-btn">Export all</button>
+            <button type="button" class="btn" id="import-presets-btn">Import…</button>
+            <input type="file" id="import-presets-file" accept=".json,application/json" hidden />
+          </div>
+          <p class="hint" id="preset-msg">Bundled presets load from presets.js on startup. Export/import JSON to sync edits between machines.</p>
+        </div>
+      </section>
+    </aside>
+    <main id="canvas-wrap" class="bg-checker">
+      <div id="canvas-palette" class="canvas-dial-hud" aria-label="Color palettes">
+        <div class="dialkit-root" data-theme="light">
+          <div class="dialkit-panel dialkit-panel-inline" data-mode="inline">
+            <div class="dialkit-panel-inner">
+              <select id="vaz-palette" class="sr-only" aria-label="fal color palettes" tabindex="-1">
+                <option value="fal" selected>fal brand</option>
+              </select>
+              <div id="canvas-palette-list" role="listbox" aria-label="Color palettes"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div id="canvas-glass-controls" class="canvas-dial-hud" aria-label="Frosted glass and blur">
+        <div class="dialkit-root" data-theme="light">
+          <div class="dialkit-panel dialkit-panel-inline" data-mode="inline">
+            <div class="dialkit-panel-inner">
+              <div class="dialkit-folder dialkit-folder-root">
+                <div class="dialkit-folder-header dialkit-panel-header">
+                  <div class="dialkit-folder-header-top">
+                    <div class="dialkit-folder-title-row">
+                      <span class="dialkit-folder-title dialkit-folder-title-root">Glass &amp; blur</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="dialkit-folder-content">
+                  <div class="dialkit-folder-inner">
+        <div class="field vas-check">
+          <input type="checkbox" id="glass-enabled" />
+          <label for="glass-enabled">Frosted glass on sphere</label>
+        </div>
+        <div class="field vas-check">
+          <input type="checkbox" id="glass-blur-text" checked />
+          <label for="glass-blur-text">Blur lettering</label>
+        </div>
+        <div class="field vas-check">
+          <input type="checkbox" id="glass-blur-blobs" checked />
+          <label for="glass-blur-blobs">Blur halftone blobs</label>
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="glass-blur">Blur</label>
+            <span class="val" id="glass-blur-val">—</span>
+          </div>
+          <input type="range" id="glass-blur" min="0" max="40" value="24" step="1" />
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="glass-frost">Frost</label>
+            <span class="val" id="glass-frost-val">—</span>
+          </div>
+          <input type="range" id="glass-frost" min="0" max="100" value="32" step="1" />
+        </div>
+        <div class="field">
+          <div class="range-row">
+            <label for="glass-shine">Shine</label>
+            <span class="val" id="glass-shine-val">—</span>
+          </div>
+          <input type="range" id="glass-shine" min="0" max="100" value="50" step="1" />
+        </div>
+        <p class="hint">Lettering and halftone blobs blur independently. Frost and shine cover the whole sphere.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div id="canvas-export-controls" class="canvas-dial-hud" aria-label="Animation export">
+        <div class="dialkit-root" data-theme="light">
+          <div class="dialkit-panel dialkit-panel-inline" data-mode="inline">
+            <div class="dialkit-panel-inner">
+              <div class="dialkit-folder dialkit-folder-root">
+                <div class="dialkit-folder-header dialkit-panel-header">
+                  <div class="dialkit-folder-header-top">
+                    <div class="dialkit-folder-title-row">
+                      <span class="dialkit-folder-title dialkit-folder-title-root">Loop export</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="dialkit-folder-content">
+                  <div class="dialkit-folder-inner">
+        <div class="field">
+          <label for="export-duration">Duration (sec)</label>
+          <input type="number" id="export-duration" min="0.5" max="30" value="3" step="0.5" />
+        </div>
+        <div class="field">
+          <label for="export-fps">FPS</label>
+          <select id="export-fps">
+            <option value="24">24</option>
+            <option value="30" selected>30</option>
+            <option value="60">60</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="export-rotations">Rotations per loop</label>
+          <input type="number" id="export-rotations" min="1" max="8" value="1" step="1" />
+        </div>
+        <div class="field">
+          <label>Size</label>
+          <div class="export-size-row">
+            <button type="button" class="btn is-active" id="export-size-1200" data-w="1200" data-h="1200">1200²</button>
+            <button type="button" class="btn" id="export-size-2000" data-w="2000" data-h="2000">2000²</button>
+          </div>
+          <div class="vaz-grid2" style="margin-top:4px">
+            <input type="number" id="export-width" min="256" max="4096" value="1200" step="1" title="Width" />
+            <input type="number" id="export-height" min="256" max="4096" value="1200" step="1" title="Height" />
+          </div>
+        </div>
+        <div class="export-actions">
+          <button type="button" class="btn" id="export-lottie-btn">Lottie JSON</button>
+          <button type="button" class="btn primary" id="export-mp4-btn">MP4</button>
+        </div>
+        <div id="export-progress" hidden><div id="export-progress-bar"></div></div>
+        <p class="hint" id="export-status">Seamless loop · 360° arc · no glass · echoes off during export</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div id="blobs-back-layer">
+        <svg id="vas-c" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" preserveAspectRatio="xMidYMid slice"></svg>
+      </div>
+      <div id="text-layer"></div>
+      <div id="blobs-front-layer">
+        <svg id="vas-c-front" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" preserveAspectRatio="xMidYMid slice"></svg>
+      </div>
+      <div id="sphere-glass" class="is-hidden" aria-hidden="true">
+        <div class="glass-frost-layer"></div>
+      </div>
+    </main>
+  </div>
+  <script defer src="vasarely.js"></script>
+  <script defer src="bundled-font-data.js"></script>
+  <script defer src="bundled-fonts.js"></script>
+  <script defer src="presets.js"></script>
+  <script defer src="spinner.js"></script>
+  <script defer src="lottie-export.js"></script>
+  <script defer src="export-animation.js"></script>
+</body>
+</html>
