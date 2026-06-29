@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>gmc generator</title>
+<link rel="stylesheet" href="gmc-generator.css">
+</head>
+<body>
+
+<div id="sidebar">
+  <h1>gmc generator</h1>
+
+  <div class="sec">Grid</div>
+  <div class="ctrl">
+    <label>Columns <span id="v-cols">40</span></label>
+    <input type="range" id="cols" min="8" max="40" value="40" step="1">
+  </div>
+  <div class="ctrl">
+    <label>Cell Size <span id="v-cell">36</span>px</label>
+    <input type="range" id="cellSize" min="16" max="64" value="36" step="2">
+  </div>
+  <div class="ctrl">
+    <label>Checker Style</label>
+    <select id="checkerStyle">
+      <option value="bw">Black / White</option>
+      <option value="dark">Dark / Darker</option>
+      <option value="light" selected>Light / Lighter</option>
+      <option value="color">Color Tinted</option>
+    </select>
+  </div>
+
+  <div class="ctrl">
+    <label>Checker Variance <span id="v-checker-var">0.00</span></label>
+    <input type="range" id="checkerVar" min="0.0" max="1.0" value="0.00" step="0.01">
+  </div>
+  <div class="ctrl">
+    <label>Blob Count <span id="v-blobs">4</span></label>
+    <input type="range" id="blobCount" min="1" max="14" value="4" step="1">
+  </div>
+  <div class="ctrl">
+    <label>Min Radius <span id="v-rmin">0.18</span></label>
+    <input type="range" id="rMin" min="0.05" max="0.45" value="0.18" step="0.01">
+  </div>
+  <div class="ctrl">
+    <label>Max Radius <span id="v-rmax">0.38</span></label>
+    <input type="range" id="rMax" min="0.10" max="0.65" value="0.38" step="0.01">
+  </div>
+  <div class="ctrl">
+    <label>Blob Shape <span id="v-shape">0.5</span></label>
+    <input type="range" id="blobShape" min="0.5" max="3.0" value="0.5" step="0.1">
+  </div>
+  <div class="ctrl">
+    <label>Edge Softness <span id="v-soft">2.2</span></label>
+    <input type="range" id="softness" min="0.8" max="6.0" value="2.2" step="0.1">
+  </div>
+
+  <div class="ctrl">
+    <label>Mega Blobs <span id="v-mega">2</span></label>
+    <input type="range" id="megaCount" min="0" max="6" value="2" step="1">
+  </div>
+  <div class="ctrl">
+    <label>Mega Scale <span id="v-megascale">0.55</span></label>
+    <input type="range" id="megaScale" min="0.25" max="1.0" value="0.55" step="0.01">
+  </div>
+  <div class="ctrl">
+    <label>Mega Lobes <span id="v-lobes">3</span></label>
+    <input type="range" id="megaLobes" min="2" max="8" value="3" step="1">
+  </div>
+  <div class="ctrl">
+    <label>Lobe Scatter <span id="v-lscatter">0.76</span></label>
+    <input type="range" id="lobeScatter" min="0.1" max="1.0" value="0.76" step="0.01">
+  </div>
+  <div class="ctrl">
+    <label>Mega Shape <span id="v-megashape">1.1</span></label>
+    <input type="range" id="megaShape" min="0.5" max="4.0" value="1.1" step="0.1">
+  </div>
+
+  <hr>
+  <div class="sec">Dots</div>
+  <div class="ctrl">
+    <label>Max Dot Size <span id="v-dotmax">0.83</span></label>
+    <input type="range" id="dotMax" min="0.3" max="1.0" value="0.83" step="0.01">
+  </div>
+  <div class="ctrl">
+    <label>Min Dot Size <span id="v-dotmin">0.00</span></label>
+    <input type="range" id="dotMin" min="0.0" max="0.3" value="0.00" step="0.01">
+  </div>
+
+  <hr>
+  <div class="sec">Node Chains (DR-style)</div>
+  <div class="ctrl">
+    <label>Mode</label>
+    <select id="metaMode">
+      <option value="off">— off —</option>
+      <option value="replace">Replace dots</option>
+      <option value="over" selected>Over dots</option>
+    </select>
+  </div>
+  <div class="ctrl">
+    <label>Chains <span id="v-meta-chains">4</span></label>
+    <input type="range" id="metaChains" min="1" max="16" value="4" step="1">
+  </div>
+  <div class="ctrl">
+    <label>Nodes/Chain <span id="v-meta-nodes">8</span></label>
+    <input type="range" id="metaNodes" min="2" max="20" value="8" step="1">
+  </div>
+  <div class="ctrl">
+    <label>Node Size <span id="v-meta-size">0.14</span></label>
+    <input type="range" id="metaSize" min="0.01" max="0.18" value="0.14" step="0.005">
+  </div>
+  <div class="ctrl">
+    <label>Size Variance <span id="v-meta-svar">0.60</span></label>
+    <input type="range" id="metaSVar" min="0.0" max="1.0" value="0.60" step="0.01">
+  </div>
+  <div class="ctrl">
+    <label>Step Length <span id="v-meta-step">0.09</span></label>
+    <input type="range" id="metaStep" min="0.02" max="0.25" value="0.09" step="0.005">
+  </div>
+  <div class="ctrl">
+    <label>Ring Mix <span id="v-meta-ring">0.50</span></label>
+    <input type="range" id="metaRing" min="0.0" max="1.0" value="0.50" step="0.01">
+  </div>
+  <div class="ctrl">
+    <label>Opacity <span id="v-meta-opacity">1.00</span></label>
+    <input type="range" id="metaOpacity" min="0.1" max="1.0" value="1.0" step="0.01">
+  </div>
+  <div class="ctrl">
+    <label>Drift Speed <span id="v-meta-drift">0.30</span></label>
+    <input type="range" id="metaDrift" min="0.0" max="1.0" value="0.30" step="0.01">
+  </div>
+  <div class="ctrl">
+    <label>Pulse Speed <span id="v-meta-pulse">0.40</span></label>
+    <input type="range" id="metaPulse" min="0.0" max="1.0" value="0.40" step="0.01">
+  </div>
+  <div class="ctrl">
+    <label>Flow Speed <span id="v-meta-flow">0.20</span></label>
+    <input type="range" id="metaFlow" min="0.0" max="1.0" value="0.20" step="0.01">
+  </div>
+  <div class="ctrl">
+    <label>Chain families</label>
+    <select id="metaColor">
+      <option value="pal">Cycle with palette</option>
+      <option value="single">Family 1 only</option>
+      <option value="random">Random family / chain</option>
+    </select>
+  </div>
+  <div class="ctrl">
+    <label>Node stroke</label>
+    <select id="metaStroke">
+      <option value="ends" selected>Dark ends (rotate)</option>
+      <option value="deep">Deepest stop</option>
+      <option value="mix_deep">Random deep (0 / 3 / 4)</option>
+      <option value="family_random">Random stop in family</option>
+      <option value="all_swatches">Any fal swatch + B/W</option>
+      <option value="black">Black</option>
+      <option value="legacy_mid">Legacy mid tones</option>
+    </select>
+  </div>
+
+  <hr>
+  <div class="sec">Depth Warp</div>
+  <div class="ctrl">
+    <label>Warp Type</label>
+    <select id="warpType">
+      <option value="none">— none —</option>
+      <option value="bulge">Bulge</option>
+      <option value="tunnel">Tunnel</option>
+      <option value="wave_h">Wave H</option>
+      <option value="wave_v">Wave V</option>
+      <option value="diagonal">Diagonal</option>
+      <option value="saddle">Saddle</option>
+    </select>
+  </div>
+  <div class="ctrl">
+    <label>Warp Strength <span id="v-warp-str">0.60</span></label>
+    <input type="range" id="warpStr" min="0.0" max="1.0" value="0.60" step="0.01">
+  </div>
+  <div class="ctrl">
+    <label>Warp Center X <span id="v-warp-cx">0.50</span></label>
+    <input type="range" id="warpCX" min="0.0" max="1.0" value="0.50" step="0.01">
+  </div>
+  <div class="ctrl">
+    <label>Warp Center Y <span id="v-warp-cy">0.50</span></label>
+    <input type="range" id="warpCY" min="0.0" max="1.0" value="0.50" step="0.01">
+  </div>
+  <div class="ctrl">
+    <label>Size Perspective <span id="v-warp-size">0.50</span></label>
+    <input type="range" id="warpSize" min="0.0" max="1.0" value="0.50" step="0.01">
+  </div>
+  <div class="ctrl">
+    <label>Comp. Bulge <span id="v-comp-bulge">0.00</span></label>
+    <input type="range" id="compBulge" min="-1.0" max="1.0" value="0.00" step="0.01">
+  </div>
+
+  <hr>
+  <div class="sec">Overlay Blobs (multiply)</div>
+  <div class="ctrl">
+    <label>Count <span id="v-ov-count">3</span></label>
+    <input type="range" id="ovCount" min="0" max="10" value="3" step="1">
+  </div>
+  <div class="ctrl">
+    <label>Size <span id="v-ov-size">0.45</span></label>
+    <input type="range" id="ovSize" min="0.10" max="0.90" value="0.45" step="0.01">
+  </div>
+  <div class="ctrl">
+    <label>Opacity <span id="v-ov-opacity">0.72</span></label>
+    <input type="range" id="ovOpacity" min="0.10" max="1.00" value="0.72" step="0.01">
+  </div>
+  <div class="ctrl">
+    <label>Shape <span id="v-ov-soft">2.5</span></label>
+    <input type="range" id="ovSoft" min="0.5" max="8.0" value="2.5" step="0.1">
+  </div>
+
+  <hr>
+  <div class="sec">Pattern Swatch</div>
+  <div class="ctrl">
+    <label>Pattern</label>
+    <select id="patType">
+      <option value="none">— none —</option>
+      <option value="dots">Dots</option>
+      <option value="dots_offset">Dots Offset</option>
+      <option value="dense_dots">Dense Dots</option>
+      <option value="rings">Rings</option>
+      <option value="lines_h">Lines H</option>
+      <option value="lines_v">Lines V</option>
+      <option value="lines_45">Lines 45°</option>
+      <option value="crosshatch">Crosshatch</option>
+      <option value="diamonds">Diamonds</option>
+      <option value="triangles">Triangles</option>
+      <option value="checks">Checks</option>
+      <option value="waves">Waves</option>
+      <option value="zigzag">Zigzag</option>
+      <option value="confetti">Confetti</option>
+    </select>
+  </div>
+  <div class="ctrl">
+    <label>Pat Scale <span id="v-pat-scale">12</span>px</label>
+    <input type="range" id="patScale" min="4" max="48" value="12" step="1">
+  </div>
+  <div class="ctrl">
+    <label>Pat Density <span id="v-pat-density">0.45</span></label>
+    <input type="range" id="patDensity" min="0.05" max="0.95" value="0.45" step="0.01">
+  </div>
+  <div class="ctrl">
+    <label>Pat Opacity <span id="v-pat-opacity">0.55</span></label>
+    <input type="range" id="patOpacity" min="0.02" max="1.00" value="0.55" step="0.01">
+  </div>
+  <div class="ctrl">
+    <label>Pat Color</label>
+    <select id="patColor">
+      <option value="black">Black</option>
+      <option value="white">White</option>
+      <option value="pal0">Palette 1</option>
+      <option value="pal1">Palette 2</option>
+      <option value="pal2">Palette 3</option>
+      <option value="random">Random</option>
+    </select>
+  </div>
+  <div class="ctrl">
+    <label>Pat Blend</label>
+    <select id="patBlend">
+      <option value="multiply">Multiply</option>
+      <option value="screen">Screen</option>
+      <option value="overlay">Overlay</option>
+      <option value="source-over">Normal</option>
+    </select>
+  </div>
+
+  <hr>
+  <div class="sec">Color</div>
+  <div class="ctrl">
+    <label>Palette</label>
+    <select id="palette">
+      <option value="fal_tonal" selected>fal — Tonal</option>
+      <option value="fal_contrast">fal — Contrasted</option>
+      <option value="fal_random">fal — Random</option>
+    </select>
+  </div>
+  <div class="ctrl">
+    <label>Color Variety <span id="v-cvar">0.70</span></label>
+    <input type="range" id="cVar" min="0.0" max="1.0" value="0.70" step="0.01">
+  </div>
+
+  <div class="btns">
+    <button id="btn-save">Save PNG</button>
+  </div>
+</div>
+
+<div id="canvas-area">
+  <div id="canvas-osc-controls" aria-label="Animation controls">
+    <p class="canvas-hud-title">Animate</p>
+
+    <div class="osc-group">
+      <div class="osc-toggle-row">
+        <label for="dotOsc">Oscillate dots</label>
+        <label class="switch"><input type="checkbox" id="dotOsc"><span class="track"></span></label>
+      </div>
+      <div class="osc-slider">
+        <label>Speed <span id="v-dotoscspeed">0.40</span></label>
+        <input type="range" id="dotOscSpeed" min="0.0" max="2.0" value="0.40" step="0.01">
+      </div>
+      <div class="osc-slider">
+        <label>Amount <span id="v-dotoscamt">0.50</span></label>
+        <input type="range" id="dotOscAmt" min="0.0" max="1.0" value="0.50" step="0.01">
+      </div>
+      <div class="osc-slider">
+        <label>Ripple <span id="v-dotoscwave">3.0</span></label>
+        <input type="range" id="dotOscWave" min="0.0" max="10.0" value="3.0" step="0.1">
+      </div>
+    </div>
+
+    <div class="osc-group">
+      <div class="osc-toggle-row">
+        <label for="warpOsc">Oscillate warp</label>
+        <label class="switch"><input type="checkbox" id="warpOsc"><span class="track"></span></label>
+      </div>
+      <div class="osc-slider">
+        <label>Speed <span id="v-warp-oscspeed">0.35</span></label>
+        <input type="range" id="warpOscSpeed" min="0.0" max="2.0" value="0.35" step="0.01">
+      </div>
+      <div class="osc-slider">
+        <label>Amount <span id="v-warp-oscamt">0.45</span></label>
+        <input type="range" id="warpOscAmt" min="0.0" max="1.0" value="0.45" step="0.01">
+      </div>
+      <div class="osc-slider">
+        <label>Ripple <span id="v-warp-oscwave">2.5</span></label>
+        <input type="range" id="warpOscWave" min="0.0" max="10.0" value="2.5" step="0.1">
+      </div>
+    </div>
+  </div>
+  <div id="canvas-preset-controls" aria-label="Presets">
+    <p class="canvas-hud-title">Presets</p>
+    <input type="text" id="preset-name-input" placeholder="Preset name…" autocomplete="off" spellcheck="false" />
+    <div class="preset-actions-row">
+      <button type="button" class="canvas-preset-btn primary" id="btn-preset-save">Save</button>
+      <button type="button" class="canvas-preset-btn" id="btn-preset-export">Export</button>
+      <button type="button" class="canvas-preset-btn" id="btn-preset-import">Import</button>
+    </div>
+    <div id="preset-list"></div>
+    <p class="preset-msg" id="preset-msg"></p>
+  </div>
+  <div id="canvas-action-controls" aria-label="Canvas actions">
+    <button type="button" id="btn-gen" class="canvas-action-btn primary">Generate ↵</button>
+    <button type="button" id="btn-svg" class="canvas-action-btn">Save SVG</button>
+    <button type="button" id="btn-svg-copy" class="canvas-action-btn">Copy SVG</button>
+  </div>
+  <canvas id="c"></canvas>
+</div>
+
+<div id="import-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:100;align-items:center;justify-content:center;">
+  <div style="background:#141414;border:1px solid #333333;padding:20px;width:420px;display:flex;flex-direction:column;gap:12px;">
+    <div style="font-size:10px;font-weight:700;letter-spacing:0.15em;color:#888888;text-transform:uppercase">Import Preset Key</div>
+    <textarea id="import-text" style="background:#0a0a0a;color:#cccccc;border:1px solid #333333;font-family:inherit;font-size:10px;padding:8px;height:120px;resize:none;outline:none;" placeholder="Paste key here…"></textarea>
+    <div style="display:flex;gap:8px">
+      <button class="preset-btn" id="btn-import-confirm" style="flex:1">Import</button>
+      <button class="preset-btn" id="btn-import-cancel" style="flex:1">Cancel</button>
+    </div>
+    <div id="import-error" style="font-size:10px;color:#999999;display:none"></div>
+  </div>
+</div>
+
+<div id="export-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:100;align-items:center;justify-content:center;">
+  <div style="background:#141414;border:1px solid #333333;padding:20px;width:420px;display:flex;flex-direction:column;gap:12px;">
+    <div style="font-size:10px;font-weight:700;letter-spacing:0.15em;color:#888888;text-transform:uppercase">Export Preset Key</div>
+    <textarea id="export-text" style="background:#0a0a0a;color:#cccccc;border:1px solid #333333;font-family:inherit;font-size:10px;padding:8px;height:120px;resize:none;outline:none;" readonly></textarea>
+    <div style="display:flex;gap:8px">
+      <button class="preset-btn" id="btn-export-copy" style="flex:1">Copy to Clipboard</button>
+      <button class="preset-btn" id="btn-export-close" style="flex:1">Close</button>
+    </div>
+  </div>
+</div>
+
+<script src="gmc-generator.js"></script>
+</body>
+</html>
