@@ -227,7 +227,6 @@
     } catch (_) {}
   }
 
-  const EMBED_DISPLAY_MAX = 480;
   const EMBED_MAX_CHARS = 50000;
   const EMBED_PACKAGE_DIR = "gmc-pattern-embed";
   const LS_EMBED_HOST = "gmc_embed_host_url";
@@ -316,9 +315,14 @@
     return {
       width: opts.width,
       height: opts.height,
-      embedMaxEdge: EMBED_DISPLAY_MAX,
       background: readExportBackground(),
     };
+  }
+
+  function embedDisplaySize(capture) {
+    const w = Math.max(64, capture.width || 480);
+    const h = Math.max(64, capture.height || 480);
+    return { displayW: w, displayH: h };
   }
 
   function generateLoopEmbedCode() {
@@ -329,8 +333,7 @@
     }
 
     const embedCapture = readEmbedCaptureOptions();
-    const displayW = Math.min(EMBED_DISPLAY_MAX, embedCapture.width);
-    const displayH = Math.max(1, Math.round(displayW * (embedCapture.height / embedCapture.width)));
+    const { displayW, displayH } = embedDisplaySize(embedCapture);
 
     const config = exp.captureEmbedConfig(embedCapture);
     const payload = svgExp.encodeEmbedConfig(config);
@@ -370,8 +373,7 @@
     }
 
     const embedCapture = readEmbedCaptureOptions();
-    const displayW = Math.min(EMBED_DISPLAY_MAX, embedCapture.width);
-    const displayH = Math.max(1, Math.round(displayW * (embedCapture.height / embedCapture.width)));
+    const { displayW, displayH } = embedDisplaySize(embedCapture);
 
     const config = exp.captureProceduralEmbedPayload(embedCapture);
 
@@ -453,7 +455,7 @@
       } else {
         ta.value = generateLoopEmbedCode();
         const info = embedCodeModeLabel();
-        const size = `mini ${Math.min(EMBED_DISPLAY_MAX, o.width)}px wide`;
+        const size = `${o.width}×${o.height}`;
         if (status) {
           if (info.mode === "hosted") {
             status.textContent = `Ready — live iframe from ${info.hostUrl} · ${size}`;

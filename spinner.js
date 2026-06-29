@@ -2986,9 +2986,12 @@ function parseEmbedConfigFromHash() {
 }
 
 function computeEmbedRenderSize(exportOpts) {
-  const maxEdge = exportOpts.embedMaxEdge || 480;
   const sw = Math.max(64, exportOpts.width || 480);
   const sh = Math.max(64, exportOpts.height || 480);
+  const maxEdge = exportOpts.embedMaxEdge;
+  if (!maxEdge) {
+    return { width: sw, height: sh };
+  }
   const scale = Math.min(1, maxEdge / Math.max(sw, sh));
   return {
     width: Math.max(64, Math.round(sw * scale)),
