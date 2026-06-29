@@ -311,6 +311,16 @@
     setStatus(`Saved ${EMBED_PACKAGE_DIR}.zip — upload the folder, then paste embed code.`);
   }
 
+  function readEmbedCaptureOptions() {
+    const opts = readExportOptions();
+    return {
+      width: opts.width,
+      height: opts.height,
+      embedMaxEdge: EMBED_DISPLAY_MAX,
+      background: readExportBackground(),
+    };
+  }
+
   function generateLoopEmbedCode() {
     const exp = window.GMCExport;
     const svgExp = window.GMCSvgExport;
@@ -318,23 +328,11 @@
       throw new Error("Export modules not loaded");
     }
 
-    const opts = readExportOptions();
-    const exportBackground = readExportBackground();
-    const layerId = $("export-lottie-content")?.value || "all";
-    const displayW = Math.min(EMBED_DISPLAY_MAX, opts.width);
-    const displayH = Math.max(1, Math.round(displayW * (opts.height / opts.width)));
+    const embedCapture = readEmbedCaptureOptions();
+    const displayW = Math.min(EMBED_DISPLAY_MAX, embedCapture.width);
+    const displayH = Math.max(1, Math.round(displayW * (embedCapture.height / embedCapture.width)));
 
-    const config = exp.captureEmbedConfig({
-      duration: opts.duration,
-      fps: opts.fps,
-      rotations: opts.rotations,
-      width: opts.width,
-      height: opts.height,
-      layers: layerId,
-      background: exportBackground,
-      embedMaxEdge: EMBED_DISPLAY_MAX,
-    });
-
+    const config = exp.captureEmbedConfig(embedCapture);
     const payload = svgExp.encodeEmbedConfig(config);
     if (payload.length > 12000) {
       console.warn("Embed config is large — some hosts may truncate long URLs.");
@@ -343,10 +341,6 @@
     const embedOpts = {
       displayWidth: displayW,
       displayHeight: displayH,
-      duration: opts.duration,
-      fps: opts.fps,
-      rotations: opts.rotations,
-      layerId,
     };
 
     const hostUrl = resolveEmbedHostUrl();
@@ -375,22 +369,11 @@
       rememberEmbedHostUrl(hostUrl);
     }
 
-    const opts = readExportOptions();
-    const exportBackground = readExportBackground();
-    const layerId = $("export-lottie-content")?.value || "all";
-    const displayW = Math.min(EMBED_DISPLAY_MAX, opts.width);
-    const displayH = Math.max(1, Math.round(displayW * (opts.height / opts.width)));
+    const embedCapture = readEmbedCaptureOptions();
+    const displayW = Math.min(EMBED_DISPLAY_MAX, embedCapture.width);
+    const displayH = Math.max(1, Math.round(displayW * (embedCapture.height / embedCapture.width)));
 
-    const config = exp.captureProceduralEmbedPayload({
-      duration: opts.duration,
-      fps: opts.fps,
-      rotations: opts.rotations,
-      width: opts.width,
-      height: opts.height,
-      layers: layerId,
-      background: exportBackground,
-      embedMaxEdge: EMBED_DISPLAY_MAX,
-    });
+    const config = exp.captureProceduralEmbedPayload(embedCapture);
 
     if (!config.baked?.contours) {
       throw new Error("Could not bake type outlines — load a font and wait for the sphere to render first.");
@@ -424,7 +407,7 @@
       );
     }
 
-    return { code, chars: code.length, hostUrl, hostPlaceholder, displayW, displayH, layerId };
+    return { code, chars: code.length, hostUrl, hostPlaceholder, displayW, displayH };
   }
 
   function getEmbedModalMode() {
@@ -453,7 +436,6 @@
 
     const mode = getEmbedModalMode();
     const o = readExportOptions();
-    const layer = $("export-lottie-content")?.value || "all";
 
     try {
       if (mode === "inline") {
@@ -472,12 +454,11 @@
         ta.value = generateLoopEmbedCode();
         const info = embedCodeModeLabel();
         const size = `mini ${Math.min(EMBED_DISPLAY_MAX, o.width)}px wide`;
-        const timing = `${o.duration}s @ ${o.fps} fps · ${o.rotations} rotation(s) · ${layer}`;
         if (status) {
           if (info.mode === "hosted") {
-            status.textContent = `Ready — iframe loads from ${info.hostUrl} · ${timing} · ${size}`;
+            status.textContent = `Ready — live iframe from ${info.hostUrl} · ${size}`;
           } else {
-            status.textContent = `Set Custom player URL (hosted app), then Regenerate · ${timing}`;
+            status.textContent = `Set Custom player URL (hosted app), then Regenerate · ${size}`;
           }
         }
       }

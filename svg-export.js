@@ -53,7 +53,7 @@
     const hostLine = opts.hostPlaceholder
       ? "<!-- Set YOUR-GMC-HOST below to where this app is hosted (e.g. Netlify) — not uploaded to Webflow -->"
       : `<!-- Player loads from ${host} -->`;
-    return `<!-- GMC Pattern · procedural loop · ${w}×${h} -->
+    return `<!-- GMC Pattern · live player · ${w}×${h} -->
 ${hostLine}
 <!-- Paste into Webflow → Embed · live canvas · under 50k chars -->
 <style>
@@ -95,27 +95,25 @@ ${boot}
     return `./${dir}/index.html?embed=1&c=${cfg}`;
   }
 
-  /** Live mini player — iframe runs the same render loop as the canvas preview. */
+  /** Live mini player — iframe uses preset spin speed & playback (not export loop timing). */
   function buildIframeLoopEmbed(payload, opts) {
     const w = opts.displayWidth;
     const h = opts.displayHeight;
-    const layer = opts.layerId || "all";
-    const rotations = opts.rotations ?? 1;
-    const meta = `${opts.duration}s · ${opts.fps} fps · ${rotations} rot · ${layer} · ${w}×${h}`;
+    const meta = `live · ${w}×${h}`;
 
     let src;
     let header;
     if (opts.playerSrc) {
       src = opts.playerSrc;
-      header = `<!-- GMC Pattern · live seamless loop · ${meta} -->`;
+      header = `<!-- GMC Pattern · live player · ${meta} -->`;
     } else if (opts.hostUrl) {
       src = buildEmbedPlayerUrl(opts.hostUrl, payload);
-      header = `<!-- GMC Pattern · live seamless loop · ${meta} -->
+      header = `<!-- GMC Pattern · live player · ${meta} -->
 <!-- Player loads from ${opts.hostUrl} (auto-detected from this app) -->`;
     } else if (opts.packageDir) {
       src = buildRelativePlayerUrl(opts.packageDir, payload);
       const dir = String(opts.packageDir).replace(/^\/+|\/+$/g, "");
-      header = `<!-- GMC Pattern · live seamless loop · ${meta} -->
+      header = `<!-- GMC Pattern · live player · ${meta} -->
 <!-- 1) Download "Embed package" in the app and upload the ${dir}/ folder to your site -->
 <!-- 2) If needed, change the iframe src path to match where you uploaded it -->`;
     } else {

@@ -67,7 +67,9 @@ let pInst = null;
 let exportMode = null;
 
 function getExportTimeMs(fallbackMs) {
-  if (exportMode && typeof exportMode.timeMs === "number") return exportMode.timeMs;
+  if (exportMode && !exportMode.liveEmbed && typeof exportMode.timeMs === "number") {
+    return exportMode.timeMs;
+  }
   return fallbackMs;
 }
 
@@ -1358,7 +1360,9 @@ window.WorldSpinnerSphere = {
   getExportBackground: () => getLiveExportBackground(),
   getSphereInteriorColors: () => getLiveSphereInteriorColors(),
   getAnimTimeSec() {
-    if (exportMode && typeof exportMode.timeMs === "number") return exportMode.timeMs / 1000;
+    if (exportMode && !exportMode.liveEmbed && typeof exportMode.timeMs === "number") {
+      return exportMode.timeMs / 1000;
+    }
     if (pInst) return pInst.millis() / 1000;
     return performance.now() / 1000;
   },
@@ -1711,7 +1715,7 @@ function sketch(p) {
     const h = p.height;
     const { cx, cy, rad } = layoutMetrics(w, h);
 
-    if (STATE.playing && !exportMode) {
+    if (STATE.playing && (!exportMode || exportMode.liveEmbed)) {
       STATE.spin += STATE.spinSpeed;
     }
 
@@ -2841,7 +2845,7 @@ async function svgElementToImage(svgEl, w, h) {
   }
 }
 
-function beginExport({ width, height, transparentBg = false, background }) {
+function readEmbedBackground(background) {
   const canvasBg = background
     ? { transparent: !!background.transparent, color: background.color || "#ffffff" }
     : readExportBackgroundFromDom();
@@ -2849,6 +2853,11 @@ function beginExport({ width, height, transparentBg = false, background }) {
     background?.sphereA !== undefined
       ? { colorA: background.sphereA || "#f8f8f4", colorB: background.sphereB || "#e4e4de" }
       : readSphereInteriorFromDom();
+  return { canvasBg, sphere };
+}
+
+function beginExport({ width, height, transparentBg = false, background }) {
+  const { canvasBg, sphere } = readEmbedBackground(background);
   const snapshot = {
     playing: STATE.playing,
     spin: STATE.spin,
@@ -2862,6 +2871,28 @@ function beginExport({ width, height, transparentBg = false, background }) {
     height,
     timeMs: 0,
     suppressEcho: true,
+    transparentBg: !!canvasBg.transparent,
+    exportBgColor: canvasBg.color || "#ffffff",
+    sphereInterior: sphere,
+  };
+  if (pInst) pInst.resizeCanvas(width, height);
+  return snapshot;
+}
+
+/** Live site embed — preset playback (spin speed, echo, displacement); export timing not used. */
+function beginEmbedDisplay({ width, height, background }) {
+  const { canvasBg, sphere } = readEmbedBackground(background);
+  const snapshot = {
+    playing: STATE.playing,
+    spin: STATE.spin,
+    echoCount: STATE.echoCount,
+    canvasW: pInst?.width || 0,
+    canvasH: pInst?.height || 0,
+  };
+  exportMode = {
+    width,
+    height,
+    liveEmbed: true,
     transparentBg: !!canvasBg.transparent,
     exportBgColor: canvasBg.color || "#ffffff",
     sphereInterior: sphere,
@@ -2929,8 +2960,6 @@ async function compositeExportFrame(targetCanvas, bg, options = {}) {
   }
 }
 
-const TWO_PI = Math.PI * 2;
-let embedLoopAfId = 0;
 let embedExportSnapshot = null;
 
 function isEmbedPage() {
@@ -2972,8 +3001,6 @@ function applyEmbedCanvasBackground(bg) {
 }
 
 function stopEmbedLoop() {
-  if (embedLoopAfId) cancelAnimationFrame(embedLoopAfId);
-  embedLoopAfId = 0;
   if (embedExportSnapshot) {
     endExport(embedExportSnapshot);
     embedExportSnapshot = null;
@@ -2984,36 +3011,18 @@ function startEmbedLoop(exportOpts) {
   if (!exportOpts || !pInst) return;
   stopEmbedLoop();
 
-  const { duration, fps, rotations, background } = exportOpts;
+  const { background } = exportOpts;
   const render = computeEmbedRenderSize(exportOpts);
-  const spinStart = STATE.spin;
-  const loopDuration = Math.max(0.5, duration || 3);
-  const loopFps = Math.max(1, fps || 30);
-  const loopRotations = Math.max(1, rotations || 1);
-  const epoch = performance.now();
-  let lastFrame = -1;
 
   applyEmbedCanvasBackground(background);
-  embedExportSnapshot = beginExport({
+  embedExportSnapshot = beginEmbedDisplay({
     width: render.width,
     height: render.height,
     background: background || { transparent: false, color: "#ffffff" },
   });
 
-  function tick(now) {
-    embedLoopAfId = requestAnimationFrame(tick);
-    const elapsed = (((now - epoch) / 1000) % loopDuration + loopDuration) % loopDuration;
-    const frame = Math.floor(elapsed * loopFps);
-    if (frame === lastFrame) return;
-    lastFrame = frame;
-    const progress = elapsed / loopDuration;
-    const spin = spinStart + TWO_PI * loopRotations * progress;
-    const timeMs = progress * loopDuration * 1000;
-    renderExportFrame(spin, timeMs);
-  }
-
-  renderExportFrame(spinStart, 0);
-  embedLoopAfId = requestAnimationFrame(tick);
+  if (typeof window.Vasarely?.draw === "function") window.Vasarely.draw();
+  if (pInst) pInst.redraw();
 }
 
 function captureEmbedConfig(exportOpts) {
@@ -3066,7 +3075,6 @@ async function initEmbedInline() {
     cacheKey = "embed-baked";
   }
 
-  STATE.playing = false;
   if (config.preset) {
     await applyPresetRecord({ schema: 10, ...config.preset }, { applyFont: false });
   }
@@ -3093,7 +3101,6 @@ async function initEmbedFromHash() {
   const config = parseEmbedConfigFromHash();
   if (!config?.export) return;
 
-  STATE.playing = false;
   if (config.preset) {
     await applyPresetRecord({ schema: 10, ...config.preset }, { applyFont: true });
   }
