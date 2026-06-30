@@ -1752,10 +1752,17 @@ async function copySvgToClipboard(svgString, successMsg) {
 function sketch(p) {
   p.setup = function () {
     const wrap = document.getElementById("canvas-wrap");
-    const w = wrap?.clientWidth || (isEmbedPage() ? window.innerWidth : 0) || 800;
-    const h = wrap?.clientHeight || (isEmbedPage() ? window.innerHeight : 0) || 600;
+    let w = wrap?.clientWidth || (isEmbedPage() ? window.innerWidth : 0) || 800;
+    let h = wrap?.clientHeight || (isEmbedPage() ? window.innerHeight : 0) || 600;
+    if (isEmbedPage() && document.documentElement.classList.contains("gmc-embed-loading") && !isEmbedLayoutSane(w, h)) {
+      w = 64;
+      h = 64;
+    }
     p.createCanvas(w, h);
     pInst = p;
+    if (isEmbedPage() && document.documentElement.classList.contains("gmc-embed-loading")) {
+      p.noLoop();
+    }
     const pc = wrap?.querySelector?.("canvas.p5Canvas");
     if (pc) {
       pc.style.position = "relative";
@@ -3057,12 +3064,145 @@ function syncEmbedLayout() {
   return true;
 }
 
-function scheduleEmbedLayoutSync() {
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
+function isEmbedLayoutSane(width, height) {
+  if (!width || !height || width < 80 || height < 80) return false;
+  const ratio = width / height;
+  return ratio >= 0.55 && ratio <= 1.8;
+}
+
+function waitForEmbedLayoutReady(maxMs = 20000) {
+  const start = performance.now();
+  const stableNeeded = 3;
+  let lastGood = null;
+  let stableFrames = 0;
+  return new Promise((resolve) => {
+    let ro = null;
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      ro?.disconnect();
       syncEmbedLayout();
-    });
+      resolve();
+    };
+    const check = () => {
+      const { width, height } = getEmbedContainerSize();
+      if (isEmbedLayoutSane(width, height)) {
+        if (lastGood?.width === width && lastGood?.height === height) {
+          stableFrames += 1;
+        } else {
+          lastGood = { width, height };
+          stableFrames = 1;
+        }
+        if (stableFrames >= stableNeeded) {
+          finish();
+          return true;
+        }
+      } else {
+        lastGood = null;
+        stableFrames = 0;
+      }
+      if (performance.now() - start > maxMs) {
+        if (isEmbedLayoutSane(width, height)) {
+          finish();
+        } else {
+          console.warn("GMC embed: layout still unstable after timeout — waiting for resize");
+          return false;
+        }
+        return true;
+      }
+      return false;
+    };
+    const wrap = document.getElementById("canvas-wrap");
+    if (wrap && typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(() => {
+        if (!settled) syncEmbedLayout();
+        check();
+      });
+      ro.observe(wrap);
+      if (wrap.parentElement) ro.observe(wrap.parentElement);
+      let node = wrap.parentElement;
+      while (node && node !== document.body) {
+        ro.observe(node);
+        node = node.parentElement;
+      }
+    }
+    window.addEventListener("resize", check, { passive: true });
+    const tick = () => {
+      if (!check()) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(() => requestAnimationFrame(tick));
   });
+}
+
+async function revealEmbedPlayer() {
+  syncEmbedLayout();
+  const { width, height } = getEmbedContainerSize();
+  if (pInst && (pInst.width !== width || pInst.height !== height)) {
+    pInst.resizeCanvas(width, height);
+  }
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  syncEmbedLayout();
+  if (typeof window.Vasarely?.draw === "function") window.Vasarely.draw();
+  if (pInst) {
+    pInst.redraw();
+    pInst.loop();
+  }
+  syncGlassOverlay();
+  document.documentElement.classList.remove("gmc-embed-loading");
+  document.documentElement.classList.add("gmc-embed-ready");
+}
+
+async function bootEmbedFromConfig(config) {
+  if (!config?.export) return;
+
+  document.documentElement.classList.add("gmc-embed-loading");
+  document.documentElement.classList.remove("gmc-embed-ready");
+
+  if (config.baked?.contours) {
+    contoursCache = {
+      contours: config.baked.contours,
+      halfW: config.baked.halfW,
+      halfH: config.baked.halfH,
+    };
+    cacheKey = "embed-baked";
+  }
+
+  if (config.preset) {
+    await applyPresetRecord({ schema: 10, ...config.preset }, { applyFont: false });
+  }
+
+  if (!pInst) {
+    mountP5();
+    pInst?.noLoop();
+  }
+
+  if (!config.baked?.contours) {
+    await mergeBundledFonts();
+    if (config.preset) {
+      await applyPresetRecord({ schema: 10, ...config.preset }, { applyFont: true });
+    }
+  }
+
+  if (config.vas) window.Vasarely?.applyLocalSnapshot?.(config.vas);
+
+  const bg = config.export?.background;
+  if (bg) {
+    applyExportBackgroundPreview({
+      transparent: !!bg.transparent,
+      color: bg.color || "#ffffff",
+    });
+  }
+
+  await waitForEmbedLayoutReady();
+  startEmbedLoop(config.export);
+  await revealEmbedPlayer();
+}
+
+async function bootEmbedPage() {
+  wireUI();
+  const config = parseEmbedConfigFromHash();
+  await bootEmbedFromConfig(config);
 }
 
 function startEmbedLayoutWatch() {
@@ -3145,7 +3285,6 @@ function startEmbedLoop(exportOpts) {
   });
 
   startEmbedLayoutWatch();
-  scheduleEmbedLayoutSync();
 
   if (typeof window.Vasarely?.draw === "function") window.Vasarely.draw();
   if (pInst) pInst.redraw();
@@ -3189,34 +3328,7 @@ function captureProceduralEmbedPayload(exportOpts) {
 }
 
 async function initEmbedInline() {
-  const config = parseEmbedConfigFromHash();
-  if (!config?.export) return;
-
-  if (config.baked?.contours) {
-    contoursCache = {
-      contours: config.baked.contours,
-      halfW: config.baked.halfW,
-      halfH: config.baked.halfH,
-    };
-    cacheKey = "embed-baked";
-  }
-
-  if (config.preset) {
-    await applyPresetRecord({ schema: 10, ...config.preset }, { applyFont: false });
-  }
-  if (config.vas) window.Vasarely?.applyLocalSnapshot?.(config.vas);
-
-  const bg = config.export?.background;
-  if (bg) {
-    applyExportBackgroundPreview({
-      transparent: !!bg.transparent,
-      color: bg.color || "#ffffff",
-    });
-  }
-
-  if (!pInst) mountP5();
-  if (typeof window.Vasarely?.draw === "function") window.Vasarely.draw();
-  startEmbedLoop(config.export);
+  await bootEmbedFromConfig(parseEmbedConfigFromHash());
 }
 
 window.GMCEmbedBoot = function () {
@@ -3224,14 +3336,7 @@ window.GMCEmbedBoot = function () {
   initEmbedInline().catch((err) => console.warn(err));
 };
 async function initEmbedFromHash() {
-  const config = parseEmbedConfigFromHash();
-  if (!config?.export) return;
-
-  if (config.preset) {
-    await applyPresetRecord({ schema: 10, ...config.preset }, { applyFont: true });
-  }
-  if (config.vas) window.Vasarely?.applyLocalSnapshot?.(config.vas);
-  startEmbedLoop(config.export);
+  await bootEmbedFromConfig(parseEmbedConfigFromHash());
 }
 
 window.GMCExport = {
@@ -3266,6 +3371,10 @@ window.addEventListener("load", () => {
     if (document.getElementById("vaz-sphere")?.checked !== false) return;
     if (pInst) pInst.redraw();
   };
+  if (isEmbedPage()) {
+    bootEmbedPage().catch((err) => console.warn(err));
+    return;
+  }
   wireUI();
   mountP5();
   mergeBundledFonts()
@@ -3283,10 +3392,6 @@ window.addEventListener("load", () => {
     })
     .finally(() => {
       pushStateToDom();
-      if (isEmbedPage()) {
-        initEmbedFromHash().catch((err) => console.warn(err));
-        return;
-      }
       resizeCanvasFromWrap();
       if (pInst) pInst.redraw();
       if (typeof window.Vasarely?.draw === "function") window.Vasarely.draw();

@@ -57,13 +57,16 @@
 ${hostLine}
 <!-- Paste into Webflow → Embed · live canvas · under 50k chars -->
 <style>
-.gmc-pattern-procedural{position:relative;width:100%;max-width:${w}px;margin:0 auto;aspect-ratio:${w}/${h};overflow:hidden;line-height:0;background:transparent}
+.gmc-pattern-procedural{position:relative;width:100%;max-width:${w}px;margin:0 auto;overflow:hidden;line-height:0;background:transparent}
+.gmc-pattern-procedural::before{content:"";display:block;padding-top:${((h / w) * 100).toFixed(4)}%}
 .gmc-pattern-procedural #gmc-pe-mount{position:absolute;inset:0}
 .gmc-pattern-procedural #canvas-wrap{position:absolute;inset:0;width:100%;height:100%;--sphere-r:38%;--sphere-x:50%;--sphere-y:48%}
 .gmc-pattern-procedural #blobs-back-layer,.gmc-pattern-procedural #text-layer,.gmc-pattern-procedural #blobs-front-layer{position:absolute;inset:0}
 .gmc-pattern-procedural #vas-c,.gmc-pattern-procedural #vas-c-front{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;clip-path:circle(var(--sphere-r) at var(--sphere-x) var(--sphere-y))}
 .gmc-pattern-procedural #text-layer canvas{display:block;width:100%!important;height:100%!important;background:transparent!important}
 .gmc-pattern-procedural #canvas-wrap.bg-checker{background-color:#fff;background-image:linear-gradient(45deg,#d4d4d4 25%,transparent 25%),linear-gradient(-45deg,#d4d4d4 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#d4d4d4 75%),linear-gradient(-45deg,transparent 75%,#d4d4d4 75%);background-size:16px 16px;background-position:0 0,0 8px,8px -8px,-8px 0}
+html.gmc-embed-loading .gmc-pattern-procedural{opacity:0}
+html.gmc-embed-ready .gmc-pattern-procedural{opacity:1}
 </style>
 <div class="gmc-pattern-procedural">
   <div id="gmc-pe-mount"></div>
@@ -121,14 +124,14 @@ ${boot}
     }
 
     return `${header}
-<div class="gmc-pattern-loop" style="width:100%;max-width:${w}px;margin:0 auto;aspect-ratio:${w}/${h};position:relative;line-height:0;background:transparent">
+<div class="gmc-pattern-loop" style="width:100%;max-width:${w}px;margin:0 auto;position:relative;line-height:0;background:transparent">
+  <div style="width:100%;padding-top:${((h / w) * 100).toFixed(4)}%;pointer-events:none" aria-hidden="true"></div>
   <iframe
     src="${src}"
     title="GMC Pattern"
     width="${w}"
     height="${h}"
     style="position:absolute;inset:0;width:100%;height:100%;border:0;display:block;background:transparent"
-    loading="lazy"
     allow="autoplay"
   ></iframe>
 </div>`;

@@ -8,7 +8,7 @@
     return;
   }
 
-  document.documentElement.classList.add("gmc-embed", "gmc-embed-inline");
+  document.documentElement.classList.add("gmc-embed", "gmc-embed-inline", "gmc-embed-loading");
 
   mount.innerHTML =
     '<div id="canvas-wrap" class="bg-checker">' +

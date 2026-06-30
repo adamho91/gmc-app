@@ -7,7 +7,7 @@
   <script>
     (function () {
       if (!/[?&]embed(?:=1|&|$)/.test(location.search)) return;
-      document.documentElement.classList.add("gmc-embed");
+      document.documentElement.classList.add("gmc-embed", "gmc-embed-loading");
     })();
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -876,6 +876,18 @@
       width: 100%;
       height: 100%;
       min-height: 100%;
+    }
+    html.gmc-embed.gmc-embed-loading body {
+      opacity: 0;
+    }
+    html.gmc-embed.gmc-embed-ready body {
+      opacity: 1;
+    }
+    html.gmc-embed.gmc-embed-loading #canvas-wrap {
+      visibility: hidden;
+    }
+    html.gmc-embed.gmc-embed-ready #canvas-wrap {
+      visibility: visible;
     }
     html.gmc-embed header,
     html.gmc-embed aside,
