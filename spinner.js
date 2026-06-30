@@ -60,6 +60,9 @@ const STATE = {
   fieldElementScale: 1,
 };
 
+/** Min canvas edge where preset type/sphere proportions are 1:1; smaller viewports scale down together. */
+const LAYOUT_REF_MIN = 760;
+
 let contoursCache = null;
 let cacheKey = "";
 let pInst = null;
@@ -1087,20 +1090,20 @@ function applyDisplacementToProjected(pr, rad, spinOff, timeMs) {
   };
 }
 
-function loopToSegments(loop, halfW, halfH, spinOff, rad, timeMs) {
+function loopToSegments(loop, halfW, halfH, spinOff, rad, timeMs, layoutScale = 1) {
   const paths = [];
   let seg = [];
   for (const pt of loop) {
     const pr = projectPoint(pt.x, pt.y, spinOff, halfW, halfH);
     if (!pr) {
-      if (seg.length >= 3) paths.push(seg);
+      if (seg.length >= 3) paths.push(scaleProjectedSegment(seg, layoutScale));
       seg = [];
     } else {
       const displaced = applyDisplacementToProjected(pr, rad, spinOff, timeMs);
       seg.push(applyTypeRadialToProjected(displaced));
     }
   }
-  if (seg.length >= 3) paths.push(seg);
+  if (seg.length >= 3) paths.push(scaleProjectedSegment(seg, layoutScale));
   return paths;
 }
 
@@ -1138,10 +1141,14 @@ function drawContoursProjected(p, spinOff, fillC, rad, timeMs) {
   const ctx = p.drawingContext;
   if (!ctx?.beginPath) return;
 
+  const layoutScale = shouldApplyViewportLayoutScale()
+    ? getViewportLayoutScale(p.width, p.height)
+    : 1;
+
   setCanvasFillFromP5Color(ctx, p, fillC);
   ctx.beginPath();
   for (const loop of contours) {
-    const segs = loopToSegments(loop, halfW, halfH, spinOff, rad, timeMs);
+    const segs = loopToSegments(loop, halfW, halfH, spinOff, rad, timeMs, layoutScale);
     for (const seg of segs) {
       if (seg.length < 3) continue;
       ctx.moveTo(seg[0].sx, seg[0].sy);
@@ -1295,6 +1302,51 @@ function layoutMetrics(w, h) {
   return { cx, cy, rad };
 }
 
+function shouldApplyViewportLayoutScale() {
+  if (!exportMode) return true;
+  return !!exportMode.liveEmbed;
+}
+
+function getViewportLayoutScale(w, h) {
+  const minEdge = Math.min(w, h);
+  if (!Number.isFinite(minEdge) || minEdge <= 0) return 1;
+  return Math.min(1, minEdge / LAYOUT_REF_MIN);
+}
+
+function scaleProjectedSegment(seg, layoutScale) {
+  if (!seg || layoutScale === 1) return seg;
+  return seg.map((p) => ({ sx: p.sx * layoutScale, sy: p.sy * layoutScale }));
+}
+
+function resizeCanvasFromWrap() {
+  if (!pInst) return;
+  if (exportMode?.liveEmbed) {
+    syncEmbedLayout();
+    return;
+  }
+  if (exportMode && !exportMode.liveEmbed) return;
+  const wrap = document.getElementById("canvas-wrap");
+  if (!wrap) return;
+  const w = wrap.clientWidth;
+  const h = wrap.clientHeight;
+  if (w <= 0 || h <= 0) return;
+  if (pInst.width === w && pInst.height === h) return;
+  pInst.resizeCanvas(w, h);
+  if (typeof window.Vasarely?.draw === "function") window.Vasarely.draw();
+}
+
+let canvasWrapResizeObserver = null;
+
+function watchCanvasWrapResize() {
+  if (canvasWrapResizeObserver) return;
+  const wrap = document.getElementById("canvas-wrap");
+  if (!wrap || typeof ResizeObserver === "undefined") return;
+  canvasWrapResizeObserver = new ResizeObserver(() => {
+    resizeCanvasFromWrap();
+  });
+  canvasWrapResizeObserver.observe(wrap);
+}
+
 function syncGlassOverlay() {
   const glass = document.getElementById("sphere-glass");
   const wrap = document.getElementById("canvas-wrap");
@@ -1305,7 +1357,7 @@ function syncGlassOverlay() {
     el.style.filter = on ? `blur(${blur}px) saturate(${saturate})` : "";
   };
 
-  if (exportMode) {
+  if (exportMode && !exportMode.liveEmbed) {
     setContentFilter(document.getElementById("vas-c"), false);
     setContentFilter(document.getElementById("vas-c-front"), false);
     setContentFilter(document.querySelector("#text-layer canvas.p5Canvas"), false);
@@ -1347,7 +1399,18 @@ window.WorldSpinnerSphere = {
   projectPatchPoint,
   getSpin: () => STATE.spin,
   getWrapSize() {
-    if (exportMode) return { w: exportMode.width, h: exportMode.height };
+    if (exportMode) {
+      if (exportMode.liveEmbed) {
+        const el = document.getElementById("canvas-wrap");
+        const w = el?.clientWidth || exportMode.width;
+        const h = el?.clientHeight || exportMode.height;
+        return {
+          w: w > 0 ? w : exportMode.width,
+          h: h > 0 ? h : exportMode.height,
+        };
+      }
+      return { w: exportMode.width, h: exportMode.height };
+    }
     const el = document.getElementById("canvas-wrap");
     return { w: el?.clientWidth || 800, h: el?.clientHeight || 600 };
   },
@@ -1689,8 +1752,8 @@ async function copySvgToClipboard(svgString, successMsg) {
 function sketch(p) {
   p.setup = function () {
     const wrap = document.getElementById("canvas-wrap");
-    const w = wrap.clientWidth || 800;
-    const h = wrap.clientHeight || 600;
+    const w = wrap?.clientWidth || (isEmbedPage() ? window.innerWidth : 0) || 800;
+    const h = wrap?.clientHeight || (isEmbedPage() ? window.innerHeight : 0) || 600;
     p.createCanvas(w, h);
     pInst = p;
     const pc = wrap?.querySelector?.("canvas.p5Canvas");
@@ -1703,11 +1766,11 @@ function sketch(p) {
   };
 
   p.windowResized = function () {
-    const wrap = document.getElementById("canvas-wrap");
-    const w = wrap.clientWidth;
-    const h = wrap.clientHeight;
-    if (w > 0 && h > 0) p.resizeCanvas(w, h);
-    if (typeof window.Vasarely?.draw === "function") window.Vasarely.draw();
+    if (exportMode?.liveEmbed) {
+      syncEmbedLayout();
+      return;
+    }
+    resizeCanvasFromWrap();
   };
 
   p.draw = function () {
@@ -1793,7 +1856,9 @@ function sketch(p) {
 }
 
 function mountP5() {
-  return new p5(sketch, "text-layer");
+  const inst = new p5(sketch, "text-layer");
+  watchCanvasWrapResize();
+  return inst;
 }
 
 function loadFontFromBuffer(buffer, name, onDone) {
@@ -2961,6 +3026,60 @@ async function compositeExportFrame(targetCanvas, bg, options = {}) {
 }
 
 let embedExportSnapshot = null;
+let embedResizeObserver = null;
+
+function getEmbedContainerSize() {
+  const wrap = document.getElementById("canvas-wrap");
+  const w = wrap?.clientWidth || window.innerWidth || 480;
+  const h = wrap?.clientHeight || window.innerHeight || 480;
+  return {
+    width: Math.max(64, Math.round(w)),
+    height: Math.max(64, Math.round(h)),
+  };
+}
+
+function syncEmbedLayout() {
+  if (!exportMode?.liveEmbed || !pInst) return false;
+  const { width, height } = getEmbedContainerSize();
+  if (width <= 0 || height <= 0) return false;
+  const unchanged =
+    exportMode.width === width &&
+    exportMode.height === height &&
+    pInst.width === width &&
+    pInst.height === height;
+  if (unchanged) return true;
+  exportMode.width = width;
+  exportMode.height = height;
+  pInst.resizeCanvas(width, height);
+  if (typeof window.Vasarely?.draw === "function") window.Vasarely.draw();
+  pInst.redraw();
+  syncGlassOverlay();
+  return true;
+}
+
+function scheduleEmbedLayoutSync() {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      syncEmbedLayout();
+    });
+  });
+}
+
+function startEmbedLayoutWatch() {
+  stopEmbedLayoutWatch();
+  const wrap = document.getElementById("canvas-wrap");
+  if (!wrap || typeof ResizeObserver === "undefined") return;
+  embedResizeObserver = new ResizeObserver(() => {
+    syncEmbedLayout();
+  });
+  embedResizeObserver.observe(wrap);
+  if (wrap.parentElement) embedResizeObserver.observe(wrap.parentElement);
+}
+
+function stopEmbedLayoutWatch() {
+  embedResizeObserver?.disconnect();
+  embedResizeObserver = null;
+}
 
 function isEmbedPage() {
   return document.documentElement.classList.contains("gmc-embed");
@@ -3004,6 +3123,7 @@ function applyEmbedCanvasBackground(bg) {
 }
 
 function stopEmbedLoop() {
+  stopEmbedLayoutWatch();
   if (embedExportSnapshot) {
     endExport(embedExportSnapshot);
     embedExportSnapshot = null;
@@ -3015,14 +3135,17 @@ function startEmbedLoop(exportOpts) {
   stopEmbedLoop();
 
   const { background } = exportOpts;
-  const render = computeEmbedRenderSize(exportOpts);
+  const container = getEmbedContainerSize();
 
   applyEmbedCanvasBackground(background);
   embedExportSnapshot = beginEmbedDisplay({
-    width: render.width,
-    height: render.height,
+    width: container.width,
+    height: container.height,
     background: background || { transparent: false, color: "#ffffff" },
   });
+
+  startEmbedLayoutWatch();
+  scheduleEmbedLayoutSync();
 
   if (typeof window.Vasarely?.draw === "function") window.Vasarely.draw();
   if (pInst) pInst.redraw();
@@ -3164,6 +3287,7 @@ window.addEventListener("load", () => {
         initEmbedFromHash().catch((err) => console.warn(err));
         return;
       }
+      resizeCanvasFromWrap();
       if (pInst) pInst.redraw();
       if (typeof window.Vasarely?.draw === "function") window.Vasarely.draw();
     });

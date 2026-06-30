@@ -121,13 +121,13 @@ ${boot}
     }
 
     return `${header}
-<div class="gmc-pattern-loop" style="width:100%;max-width:${w}px;margin:0 auto;line-height:0;background:transparent">
+<div class="gmc-pattern-loop" style="width:100%;max-width:${w}px;margin:0 auto;aspect-ratio:${w}/${h};position:relative;line-height:0;background:transparent">
   <iframe
     src="${src}"
     title="GMC Pattern"
     width="${w}"
     height="${h}"
-    style="width:100%;aspect-ratio:${w}/${h};border:0;display:block;background:transparent"
+    style="position:absolute;inset:0;width:100%;height:100%;border:0;display:block;background:transparent"
     loading="lazy"
     allow="autoplay"
   ></iframe>
