@@ -1,7 +1,9 @@
 {
   "dependencies": {
-    "dialkit": "^1.3.0",
-    "motion": "^12.42.0",
-    "mp4-muxer": "^5.1.3"
+    "dialkit": "^1.4.2",
+    "motion": "^12.42.2",
+    "mp4-muxer": "^5.1.3",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
   }
 }

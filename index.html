@@ -13,6 +13,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="dialkit-styles.css" />
   <link rel="preload" href="fonts/FocalText-Regular.otf" as="fetch" type="font/otf" crossorigin="anonymous" />
   <script src="https://cdn.jsdelivr.net/npm/p5@1.11.3/lib/p5.min.js"></script>
   <!-- npm 1.3.4 ignores axis coords in getPath; master applies gvar/CFF2 via options.variation -->
@@ -888,6 +889,10 @@
     }
     html.gmc-embed.gmc-embed-ready #canvas-wrap {
       visibility: visible;
+    }
+    html.gmc-embed #dialkit-mount,
+    html.gmc-embed .dialkit-root {
+      display: none !important;
     }
     html.gmc-embed header,
     html.gmc-embed aside,
@@ -1954,5 +1959,8 @@
   <script defer src="lottie-export.js"></script>
   <script defer src="svg-export.js"></script>
   <script defer src="export-animation.js"></script>
+  <!-- DialRoot sibling mount (vanilla adaptation of DialKit layout recipe) -->
+  <div id="dialkit-mount"></div>
+  <script type="module" src="dialkit-boot.js"></script>
 </body>
 </html>

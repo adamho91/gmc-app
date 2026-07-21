@@ -1197,6 +1197,10 @@ ALL_CHECKBOX_IDS.forEach(id => {
 let _animLast = null;
 function animFrame(now) {
   requestAnimationFrame(animFrame);
+  if (window.GMCGeneratorExporting) {
+    _animLast = now;
+    return;
+  }
   if (_animLast === null) _animLast = now;
   const dt = Math.min(0.05, (now - _animLast) / 1000);
   _animLast = now;

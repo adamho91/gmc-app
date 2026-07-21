@@ -344,6 +344,12 @@
     <button type="button" id="btn-gen" class="canvas-action-btn primary">Generate ↵</button>
     <button type="button" id="btn-svg" class="canvas-action-btn">Save SVG</button>
     <button type="button" id="btn-svg-copy" class="canvas-action-btn">Copy SVG</button>
+    <div class="video-export-options">
+      <label>Seconds <input type="number" id="video-duration" min="1" max="30" step="0.5" value="3"></label>
+      <label>FPS <input type="number" id="video-fps" min="12" max="60" step="1" value="30"></label>
+    </div>
+    <button type="button" id="btn-mp4" class="canvas-action-btn">Export MP4</button>
+    <div id="video-export-status" role="status" aria-live="polite"></div>
   </div>
   <canvas id="c"></canvas>
 </div>
@@ -373,5 +379,6 @@
 
 <script src="gmc-generator-presets.js"></script>
 <script src="gmc-generator.js"></script>
+<script src="gmc-generator-video-export.js"></script>
 </body>
 </html>
