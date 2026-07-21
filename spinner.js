@@ -60,9 +60,6 @@ const STATE = {
   fieldElementScale: 1,
 };
 
-/** Min canvas edge where preset type/sphere proportions are 1:1; smaller viewports scale down together. */
-const LAYOUT_REF_MIN = 760;
-
 let contoursCache = null;
 let cacheKey = "";
 let pInst = null;
@@ -1308,9 +1305,16 @@ function shouldApplyViewportLayoutScale() {
 }
 
 function getViewportLayoutScale(w, h) {
-  const minEdge = Math.min(w, h);
-  if (!Number.isFinite(minEdge) || minEdge <= 0) return 1;
-  return Math.min(1, minEdge / LAYOUT_REF_MIN);
+  const { rad } = layoutMetrics(w, h);
+  if (!Number.isFinite(rad) || rad <= 0) return 1;
+  /* Projected sphere limb radius in px (fixed by lens, independent of viewport). */
+  const R = STATE.sphereR * 220;
+  const denomSq = STATE.camZ * STATE.camZ - R * R;
+  if (denomSq <= 0) return 1;
+  const limb = (STATE.focal * R) / Math.sqrt(denomSq);
+  if (!Number.isFinite(limb) || limb <= 0) return 1;
+  /* Shrink content so the projected sphere never overflows the clip circle; never enlarge. */
+  return Math.min(1, rad / limb);
 }
 
 function scaleProjectedSegment(seg, layoutScale) {
