@@ -1,0 +1,111 @@
+/* Dial sliders — glitch-dust-maker style pills, purple theme for GMC. */
+
+.dial-row .dial-hidden { display: none !important; }
+
+.dial-row .dial-source {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.dial-slider-wrap { position: relative; height: 28px; }
+
+.dial-slider {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+  border-radius: 8px;
+  background: rgba(87, 24, 192, 0.10);
+  transition: background 0.15s;
+}
+.dial-slider-active { background: rgba(87, 24, 192, 0.16); }
+
+.dial-hashmarks { position: absolute; inset: 0; pointer-events: none; }
+.dial-hashmark {
+  position: absolute;
+  top: 50%;
+  width: 1px;
+  height: 7px;
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+  background: transparent;
+  transition: background 0.15s;
+}
+.dial-slider-active .dial-hashmark { background: rgba(87, 24, 192, 0.22); }
+
+.dial-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  background: rgba(87, 24, 192, 0.32);
+  pointer-events: none;
+  transition: width 0.12s ease-out, background 0.15s;
+}
+.dial-dragging .dial-fill,
+.dial-dragging .dial-handle { transition: none; }
+.dial-slider-active .dial-fill { background: rgba(87, 24, 192, 0.48); }
+
+.dial-handle {
+  position: absolute;
+  top: 50%;
+  width: 3px;
+  height: 16px;
+  border-radius: 999px;
+  background: #5718C0;
+  pointer-events: none;
+  transform: translateY(-50%) scaleX(0.35);
+  opacity: 0;
+  transition: opacity 0.15s, transform 0.15s;
+}
+.dial-slider-active .dial-handle {
+  opacity: 0.85;
+  transform: translateY(-50%) scaleX(1);
+}
+
+.dial-label {
+  position: absolute;
+  left: 9px;
+  top: 50%;
+  transform: translateY(-50%);
+  max-width: calc(100% - 60px);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: lowercase;
+  color: rgba(20, 8, 46, 0.72);
+  pointer-events: none;
+}
+
+.dial-value {
+  position: absolute;
+  right: 9px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 9px;
+  font-weight: 500;
+  color: rgba(20, 8, 46, 0.66);
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+.dial-slider-active .dial-value { color: rgba(20, 8, 46, 0.95); }
+
+/* Dark sidebar in the 2D generator — brighter purple + light text. */
+#sidebar .dial-slider { background: rgba(151, 102, 255, 0.14); }
+#sidebar .dial-slider-active { background: rgba(151, 102, 255, 0.2); }
+#sidebar .dial-slider-active .dial-hashmark { background: rgba(255, 255, 255, 0.14); }
+#sidebar .dial-fill { background: rgba(151, 102, 255, 0.5); }
+#sidebar .dial-slider-active .dial-fill { background: rgba(151, 102, 255, 0.66); }
+#sidebar .dial-handle { background: rgba(196, 163, 255, 0.95); }
+#sidebar .dial-label { color: rgba(255, 255, 255, 0.68); }
+#sidebar .dial-value { color: rgba(255, 255, 255, 0.68); }
+#sidebar .dial-slider-active .dial-value { color: rgba(255, 255, 255, 0.95); }
