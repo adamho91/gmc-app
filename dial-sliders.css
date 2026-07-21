@@ -115,3 +115,9 @@
 #sidebar .dial-label { color: rgba(255, 255, 255, 0.68); }
 #sidebar .dial-value { color: rgba(255, 255, 255, 0.68); }
 #sidebar .dial-slider-active .dial-value { color: rgba(255, 255, 255, 0.95); }
+
+/* Tighter stack in 2D generator sidebars. */
+#sidebar .dial-row,
+#canvas-osc-controls .dial-row {
+  margin-bottom: 2px;
+}
