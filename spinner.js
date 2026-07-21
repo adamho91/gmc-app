@@ -712,7 +712,7 @@ function renderAxisControls() {
   section.hidden = false;
   if (hint) {
     hint.textContent =
-      "Registered axes for this font. Outlines update when the font includes gvar or CFF2 variation data.";
+      "Registered axes for this font. Outlines update when the font includes variation data.";
   }
   for (let i = 0; i < axes.length; i++) {
     const a = axes[i];

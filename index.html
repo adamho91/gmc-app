@@ -221,15 +221,19 @@
       text-transform: uppercase;
       letter-spacing: 0.14em;
       color: var(--muted);
-      margin-bottom: 6px;
+      margin-bottom: 8px;
     }
-    .field { display: flex; flex-direction: column; gap: 4px; }
+    .panel section > h2 ~ h2 {
+      margin-top: 14px;
+    }
+    .field { display: flex; flex-direction: column; gap: 5px; }
     .field label {
       font-family: var(--mono);
       font-size: 9px;
+      font-weight: 500;
       color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
+      text-transform: none;
+      letter-spacing: 0.02em;
     }
     input[type="text"], textarea {
       font-family: var(--mono);
@@ -264,8 +268,21 @@
     .hint {
       font-family: var(--mono);
       font-size: 9px;
+      font-weight: 400;
       color: var(--muted);
-      line-height: 1.4;
+      line-height: 1.45;
+      letter-spacing: 0.01em;
+      text-transform: none;
+      margin: 0;
+    }
+    .hint strong { font-weight: 500; color: var(--text); }
+    .field > .hint { margin-top: 2px; }
+    .panel section > .hint {
+      margin: 0 0 8px;
+    }
+    .panel section > .field + .hint,
+    .panel section > .row + .hint {
+      margin: 6px 0 0;
     }
     .val {
       font-family: var(--mono);
@@ -636,24 +653,28 @@
       text-transform: uppercase;
       letter-spacing: 0.14em;
       color: var(--muted);
-      margin: 0 0 2px 2px;
+      margin: 0 0 6px 0;
     }
     #canvas-glass-controls .field {
       gap: 4px;
     }
     #canvas-glass-controls .field label {
       font-size: 9px;
+      font-weight: 500;
+      text-transform: none;
+      letter-spacing: 0.02em;
     }
     #canvas-glass-controls .vas-check label {
       font-size: 9px;
+      font-weight: 500;
       text-transform: none;
-      letter-spacing: 0;
+      letter-spacing: 0.02em;
       color: var(--text);
     }
     #canvas-glass-controls .hint {
       font-size: 9px;
-      line-height: 1.35;
-      margin-top: 2px;
+      line-height: 1.45;
+      margin-top: 6px;
     }
     #canvas-export-controls {
       position: absolute;
@@ -669,11 +690,14 @@
     }
     #canvas-export-controls .field label {
       font-size: 9px;
+      font-weight: 500;
+      text-transform: none;
+      letter-spacing: 0.02em;
     }
     #canvas-export-controls .hint {
       font-size: 9px;
-      line-height: 1.35;
-      margin-top: 2px;
+      line-height: 1.45;
+      margin-top: 4px;
     }
     #canvas-export-controls .export-size-row {
       display: grid;
@@ -729,9 +753,10 @@
       margin: 0;
     }
     #canvas-export-controls .export-bg-transparent label {
-      font-size: 8px;
+      font-size: 9px;
+      font-weight: 500;
       text-transform: none;
-      letter-spacing: 0;
+      letter-spacing: 0.02em;
       color: var(--text);
     }
     #canvas-export-controls input[type="color"]:disabled {
@@ -753,6 +778,9 @@
     }
     #canvas-meta-controls .field label {
       font-size: 9px;
+      font-weight: 500;
+      text-transform: none;
+      letter-spacing: 0.02em;
     }
     #canvas-meta-controls select {
       font-size: 9px;
@@ -760,9 +788,9 @@
     }
     #canvas-meta-controls .hint {
       font-size: 9px;
-      line-height: 1.35;
+      line-height: 1.45;
       margin-top: 0;
-      margin-bottom: 2px;
+      margin-bottom: 6px;
     }
     #export-progress {
       width: 100%;
@@ -1027,7 +1055,13 @@
       gap: 8px;
     }
     .vas-check input { width: auto; accent-color: #5718C0; flex-shrink: 0; }
-    .vas-check label { text-transform: none; letter-spacing: 0; font-size: 9px; color: var(--text); }
+    .vas-check label {
+      text-transform: none;
+      letter-spacing: 0.02em;
+      font-size: 9px;
+      font-weight: 500;
+      color: var(--text);
+    }
     .vas-check > .hint { flex: 1 1 100%; margin: 0; }
     .vas-check > label.row { flex: 1 1 auto; min-width: 0; white-space: nowrap; }
     .kbd {
@@ -1068,12 +1102,12 @@
           <label for="text-input">String</label>
           <textarea id="text-input" spellcheck="false">GMC</textarea>
         </div>
-        <div class="field" style="margin-top:8px">
+        <div class="field">
           <label for="font-file">Font upload</label>
           <input type="file" id="font-file" accept=".ttf,.otf,.woff,.woff2,.TTF,.OTF,.WOFF,.WOFF2" />
           <div class="hint" id="font-status">Loading default…</div>
         </div>
-        <div class="field" style="margin-top:8px">
+        <div class="field">
           <label for="saved-font-select">Saved in this browser</label>
           <select id="saved-font-select" aria-label="Saved fonts">
             <option value="__bundled__">Bundled · Inter VF</option>
@@ -1088,7 +1122,7 @@
           <div class="row" style="margin-top:6px">
             <button type="button" class="btn danger" id="delete-saved-font">Remove selected</button>
           </div>
-          <p class="hint">Stored in IndexedDB on your machine only — not uploaded. The newest saved font loads by default; saving with the same name again replaces that slot and bumps it to “most recent.”</p>
+          <p class="hint">Stored in IndexedDB on this machine only — not uploaded. Newest saved font loads by default; same name replaces and becomes most recent.</p>
         </div>
         <section id="vf-section" hidden>
           <h2 style="margin-top:10px">Variable font axes</h2>
@@ -1109,7 +1143,7 @@
           <input type="range" id="angle-slider" min="0" max="359" value="359" step="1" />
         </div>
         <div class="field">
-          <label>Snap (halftone field grid)</label>
+          <label>Snap to grid</label>
           <div class="row">
             <button type="button" class="btn" id="snap-0">0°</button>
             <button type="button" class="btn" id="snap-45">45°</button>
@@ -1144,10 +1178,7 @@
           <input type="range" id="font-size" min="40" max="260" value="244" step="2" />
         </div>
         <div class="field">
-          <div class="range-row">
-            <label for="type-color">Type color</label>
-            <span class="val" style="min-width:0" aria-hidden="true"></span>
-          </div>
+          <label for="type-color">Type color</label>
           <input type="color" id="type-color" value="#5718C0" title="Fill color for lettering" />
         </div>
         <div class="field">
@@ -1185,11 +1216,11 @@
           </div>
           <input type="range" id="tilt-y" min="-80" max="85" value="0" step="1" />
         </div>
-        <p class="hint" style="margin-top:6px">Drag on the sphere to adjust tilt X/Y (same limits as the sliders). Double-click the sphere to reset tilt to defaults.</p>
+        <p class="hint">Drag the sphere to set tilt X/Y. Double-click to reset.</p>
       </section>
       <section>
         <h2>Depth from center</h2>
-        <p class="hint" style="margin-bottom:8px">Camera moves the whole bubble; radial scales zoom type or field in screen space from the sphere center; type Z pulls lettering along the view; field grain scales checker/dots.</p>
+        <p class="hint">Camera moves the bubble. Radial scales zoom from center; type Z pulls lettering; field grain scales checker and dots.</p>
         <div class="field">
           <div class="range-row">
             <label for="cam">Camera distance</label>
@@ -1252,7 +1283,7 @@
       </section>
       <section>
         <h2>Displacement map</h2>
-        <p class="hint" style="margin-bottom:8px">Smooth field + optional checker sign per cell. Drift speed only matters when time drift &gt; 0.</p>
+        <p class="hint">Smooth field with optional checker sign. Drift speed only applies when time drift is above 0.</p>
         <div class="field">
           <div class="range-row">
             <label for="displacement">Amount</label>
@@ -1319,7 +1350,7 @@
       </section>
       <section>
         <h2>Halftone field</h2>
-        <p class="hint" style="margin-bottom:8px">Checker + halftone blobs fill the sphere; type draws on top. Regenerate for a new seed. Controls here (including front-layer dots and field seed) are saved in localStorage for this browser.</p>
+        <p class="hint">Checker and blobs fill the sphere; type draws on top. Regenerate for a new seed. Settings save in this browser.</p>
         <div class="field vas-check">
           <input type="checkbox" id="vaz-sphere" checked />
           <label for="vaz-sphere">Map field to 3D sphere (longitude · spin · shared bulge center)</label>
@@ -1335,7 +1366,7 @@
             <input type="number" id="vaz-tcell" class="full" min="1" max="256" value="1" step="1" title="Approx cell px" />
           </div>
           <button type="button" class="btn" id="vaz-fit" style="margin-top:6px;width:100%">Fit columns / rows / cell</button>
-          <p class="hint" style="margin-top:4px">SVG viewBox <span id="vaz-grid-out">—</span> px (scaled to viewport)</p>
+          <p class="hint">SVG viewBox <span id="vaz-grid-out">—</span> px (scaled to viewport)</p>
         </div>
         <div class="field">
           <div class="range-row">
@@ -1372,7 +1403,7 @@
             <input type="checkbox" id="vaz-checker-grid" />
             <span>Show checker grid</span>
           </label>
-          <p class="hint">Off: solid field (lighter tone from your checker preset); halftone dots unchanged.</p>
+          <p class="hint">Off: solid field from the lighter checker tone; dots unchanged.</p>
         </div>
         <div class="field">
           <div class="range-row">
@@ -1518,8 +1549,8 @@
           </div>
           <input type="range" id="vaz-bulge" min="-1" max="1" value="0" step="0.01" />
         </div>
-        <h2 style="margin-top:14px">Halftone vs type</h2>
-        <p class="hint" style="margin-bottom:8px">Some dots can draw <strong>on top</strong> of the letters (second SVG layer). Checker stays behind. Seed-stable random + optional bias toward “big” dots; run-off nudges outward from center.</p>
+        <h2>Halftone vs type</h2>
+        <p class="hint">Some dots can draw above the letters. Checker stays behind. Bias favors strong dots; run-off nudges outward.</p>
         <div class="field">
           <div class="range-row">
             <label for="vaz-front-pct">Dots in front (amount)</label>
@@ -1566,7 +1597,7 @@
       </div>
       <div id="canvas-meta-controls" aria-label="Over dots node chains">
         <p class="canvas-hud-title">Over dots</p>
-        <p class="hint"><strong>Over dots</strong> draws above type; <strong>Replace</strong> hides halftone dots.</p>
+        <p class="hint">Over dots draws above type; Replace hides halftone dots.</p>
         <div class="field">
           <label for="vaz-meta-mode">Mode</label>
           <select id="vaz-meta-mode">
@@ -1701,7 +1732,7 @@
           </div>
           <input type="range" id="glass-shine" min="0" max="100" value="0" step="1" />
         </div>
-        <p class="hint">Lettering and halftone blobs blur independently. Frost and shine cover the whole sphere.</p>
+        <p class="hint">Lettering and blobs blur independently. Frost and shine cover the whole sphere.</p>
       </div>
       <div id="canvas-export-controls" aria-label="Animation export">
         <p class="canvas-hud-title">Loop export</p>
@@ -1741,7 +1772,7 @@
               <label for="export-bg-transparent">Transparent</label>
             </div>
           </div>
-          <p class="hint">Outside the sphere only. Transparent shows the checker; sphere colors stay independent below.</p>
+          <p class="hint">Outside the sphere only. Transparent shows the checker.</p>
         </div>
         <div class="field">
           <label>Sphere interior</label>
@@ -1749,7 +1780,7 @@
             <input type="color" id="sphere-bg-a" value="#f8f8f4" title="Sphere interior color A" />
             <input type="color" id="sphere-bg-b" value="#e4e4de" title="Sphere interior color B" />
           </div>
-          <p class="hint">Checker colors inside the sphere. Color A is the solid fill when halftone is off.</p>
+          <p class="hint">Checker colors inside the sphere. Color A fills when halftone is off.</p>
         </div>
         <div class="field">
           <label for="export-lottie-content">Lottie layers</label>
@@ -1774,14 +1805,14 @@
             <option value="sharp">Sharp · 960px WebP</option>
             <option value="full">Full · PNG at export size</option>
           </select>
-          <p class="hint">WebP + solid matte avoids JPEG dithering on halftone dots. Transparent forces PNG. Video stays full size.</p>
+          <p class="hint">WebP matte avoids JPEG dither on dots. Transparent forces PNG. Video stays full size.</p>
         </div>
-        <p class="hint" style="margin-top:4px">Vector (lossless)</p>
+        <p class="hint">Vector (lossless)</p>
         <div class="export-actions-grid">
           <button type="button" class="btn" id="export-svg-seq-btn">SVG sequence ZIP</button>
           <button type="button" class="btn" id="export-svg-anim-btn">Animated SVG</button>
         </div>
-        <p class="hint">True vector paths — no raster dither. Sequence for AE / custom players; animated SVG is one SMIL file.</p>
+        <p class="hint">True vector paths — no raster dither. Sequence for AE; animated SVG is one SMIL file.</p>
         <div class="export-actions-grid" style="margin-top:4px">
           <button type="button" class="btn" id="export-lottie-btn">Lottie JSON</button>
           <button type="button" class="btn primary" id="export-mp4-btn">MP4 + WebM</button>
@@ -1797,13 +1828,13 @@
             <label><input type="radio" name="export-embed-mode" value="inline" checked /> Procedural (Webflow)</label>
             <label><input type="radio" name="export-embed-mode" value="iframe" /> Live iframe</label>
           </div>
-          <p class="hint" id="export-embed-hint">Uses preset spin speed &amp; playback · duration/fps/rotations apply only to Lottie/MP4 · player scripts load from your hosted app URL.</p>
+          <p class="hint" id="export-embed-hint">Uses preset spin speed and playback. Duration, fps, and rotations apply only to Lottie/MP4.</p>
           <details class="export-embed-advanced">
             <summary>Live iframe options</summary>
             <div class="field" style="margin-top:6px">
               <label for="export-embed-host">Player base URL</label>
               <input type="url" id="export-embed-host" placeholder="Auto-detected when app is hosted online" autocomplete="off" spellcheck="false" />
-              <p class="hint">Only for Live iframe — the player must be hosted somewhere (not on Webflow). Auto-fills when you use the app over https://.</p>
+              <p class="hint">Live iframe only — host the player somewhere (not on Webflow). Auto-fills over https://.</p>
             </div>
             <div class="export-embed-actions" style="margin-top:6px">
               <button type="button" class="btn span-2" id="export-embed-host-zip">Download self-host package</button>
