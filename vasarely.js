@@ -616,6 +616,9 @@
         typeof S.getFieldScales === "function" ? S.getFieldScales() : { radial: 1, element: 1 };
       const frs = Number.isFinite(fSc.radial) ? fSc.radial : 1;
       const fes = Number.isFinite(fSc.element) ? fSc.element : 1;
+      /* Match the type layer's viewport shrink so small canvases show the whole composition. */
+      const lsRaw = typeof S.getLayoutScale === "function" ? S.getLayoutScale() : 1;
+      const ls = Number.isFinite(lsRaw) && lsRaw > 0 ? lsRaw : 1;
 
       function toScreen(nu, nv) {
         const { nu: nw, nv: vw } = compWarpNuNv(nu, nv);
@@ -623,9 +626,10 @@
         const ny = 2 * vw - 1;
         const pr = S.projectPatchPoint(nx, ny, spin);
         if (!pr) return null;
-        return { x: cx + pr.sx * frs, y: cy + pr.sy * frs, scale: pr.scale };
+        return { x: cx + pr.sx * frs * ls, y: cy + pr.sy * frs * ls, scale: pr.scale };
       }
 
+      /* Meta node radius already tracks viewport width (metaSize * canvasW), so no extra ls here. */
       projectNuNv = (nu, nv) => {
         const p = toScreen(nu, nv);
         if (!p) return null;
@@ -697,7 +701,7 @@
             const p = toScreen(nu, nv);
             if (!p) continue;
             const w = warpAt(nu, nv);
-            const px = p.scale / s0;
+            const px = (p.scale / s0) * ls;
             const rx = baseR * px * w.sz * w.sx * fes;
             const ry = baseR * px * w.sz * w.sy * fes;
             const isFront = pickDotFront(col, row, infl, frontPct, frontBias);

@@ -1418,6 +1418,12 @@ window.WorldSpinnerSphere = {
     radial: STATE.fieldRadialScale,
     element: STATE.fieldElementScale,
   }),
+  /** Viewport shrink factor (min edge / 760, capped at 1) — same scale the type layer uses. */
+  getLayoutScale() {
+    if (!shouldApplyViewportLayoutScale()) return 1;
+    const { w, h } = this.getWrapSize();
+    return getViewportLayoutScale(w, h);
+  },
   /** True only during transparent export (flat halftone matte). Not tied to canvas preview transparency. */
   isExportTransparentBg: () => !!exportMode?.transparentBg,
   getExportBackground: () => getLiveExportBackground(),
