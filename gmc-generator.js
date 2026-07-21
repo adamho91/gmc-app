@@ -899,6 +899,22 @@ async function migrateLegacyPresets() {
   } catch (_) {}
 }
 
+async function mergeBundledGeneratorPresets() {
+  const bundled = window.GMC_GENERATOR_BUNDLED_PRESETS;
+  if (!Array.isArray(bundled) || !bundled.length) return;
+  for (const entry of bundled) {
+    const name = entry?.name;
+    const state = entry?.state;
+    if (!name || !state || typeof state !== 'object') continue;
+    presetsStore[name] = state;
+    try {
+      await idbWritePreset(name, state);
+    } catch (err) {
+      console.warn(err);
+    }
+  }
+}
+
 async function initPresets() {
   try {
     presetsStore = await idbReadAllPresets();
@@ -912,6 +928,11 @@ async function initPresets() {
     } catch (err) {
       console.warn(err);
     }
+  }
+  try {
+    await mergeBundledGeneratorPresets();
+  } catch (err) {
+    console.warn(err);
   }
   renderPresetList();
 }
@@ -1200,7 +1221,18 @@ requestAnimationFrame(animFrame);
 // ── Init ──────────────────────────────────────────────────────────────────────
 initPresets()
   .then(() => {
-    if (!restoreState()) draw(currentSeed);
+    if (restoreState()) return;
+    const defName = window.GMC_GENERATOR_DEFAULT_PRESET;
+    const defState = defName && presetsStore[defName];
+    if (defState) {
+      activePresetName = defName;
+      const input = document.getElementById('preset-name-input');
+      if (input) input.value = defName;
+      applyState(defState);
+      renderPresetList();
+      return;
+    }
+    draw(currentSeed);
   })
   .catch((err) => {
     console.warn(err);
