@@ -1,5 +1,11 @@
 /* Dial sliders — glitch-dust-maker style pills, purple theme for GMC. */
 
+.dial-row {
+  margin: 0 0 6px;
+  gap: 0;
+}
+.dial-row:last-child { margin-bottom: 0; }
+
 .dial-row .dial-hidden { display: none !important; }
 
 .dial-row .dial-source {

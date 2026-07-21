@@ -35,7 +35,7 @@
       --sans: "DM Sans", system-ui, sans-serif;
       --fs: 9px;
       --lh: 1.45;
-      --header-h: 41px;
+      --header-h: 33px;
       --panel-width: clamp(252px, 28vw, 360px);
       --canvas-hud-width: 240px;
     }
@@ -53,8 +53,8 @@
       display: flex;
       align-items: center;
       gap: 12px;
-      padding: 8px 14px;
-      min-height: 40px;
+      padding: 4px 14px;
+      min-height: 32px;
       border-bottom: 1px solid var(--border);
       background: linear-gradient(180deg, #ffffff 0%, #D9D7CC 100%);
       z-index: 10;
@@ -84,7 +84,7 @@
       font-weight: 500;
       letter-spacing: 0.06em;
       text-transform: uppercase;
-      padding: 6px 10px;
+      padding: 4px 10px;
       border: 1px solid transparent;
       border-radius: 4px;
       background: transparent;
@@ -151,12 +151,12 @@
       padding: 2px 0;
     }
     .header-actions .btn {
-      padding: 7px 12px;
+      padding: 4px 10px;
       line-height: 1.35;
     }
     .btn {
       font-family: var(--mono);
-      font-size: 8.5px;
+      font-size: 9px;
       padding: 5px 11px;
       border-radius: 3px;
       border: 1px solid var(--border);
@@ -216,7 +216,7 @@
     }
     .panel h2 {
       font-family: var(--mono);
-      font-size: 8px;
+      font-size: 9px;
       font-weight: 500;
       text-transform: uppercase;
       letter-spacing: 0.14em;
@@ -226,14 +226,14 @@
     .field { display: flex; flex-direction: column; gap: 4px; }
     .field label {
       font-family: var(--mono);
-      font-size: 8px;
+      font-size: 9px;
       color: var(--muted);
       text-transform: uppercase;
       letter-spacing: 0.08em;
     }
     input[type="text"], textarea {
       font-family: var(--mono);
-      font-size: 10px;
+      font-size: 9px;
       padding: 7px 9px;
       border: 1px solid var(--border);
       border-radius: 3px;
@@ -244,7 +244,7 @@
     textarea { resize: vertical; min-height: 52px; white-space: pre-wrap; }
     select {
       font-family: var(--mono);
-      font-size: 10px;
+      font-size: 9px;
       padding: 6px 8px;
       border: 1px solid var(--border);
       border-radius: 3px;
@@ -256,20 +256,20 @@
     input[type="color"] { width: 100%; height: 34px; padding: 2px; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; background: #fff; }
     input[type="file"] {
       font-family: var(--mono);
-      font-size: 8px;
+      font-size: 9px;
       width: 100%;
     }
     .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
     .row .btn { flex: 1; min-width: 0; }
     .hint {
       font-family: var(--mono);
-      font-size: 7.5px;
+      font-size: 9px;
       color: var(--muted);
       line-height: 1.4;
     }
     .val {
       font-family: var(--mono);
-      font-size: 8px;
+      font-size: 9px;
       color: var(--text);
       min-width: 36px;
       text-align: right;
@@ -631,7 +631,7 @@
     }
     .canvas-hud-title {
       font-family: var(--mono);
-      font-size: 8px;
+      font-size: 9px;
       font-weight: 500;
       text-transform: uppercase;
       letter-spacing: 0.14em;
@@ -639,19 +639,19 @@
       margin: 0 0 2px 2px;
     }
     #canvas-glass-controls .field {
-      gap: 2px;
+      gap: 4px;
     }
     #canvas-glass-controls .field label {
-      font-size: 7.5px;
+      font-size: 9px;
     }
     #canvas-glass-controls .vas-check label {
-      font-size: 8px;
+      font-size: 9px;
       text-transform: none;
       letter-spacing: 0;
       color: var(--text);
     }
     #canvas-glass-controls .hint {
-      font-size: 7px;
+      font-size: 9px;
       line-height: 1.35;
       margin-top: 2px;
     }
@@ -665,13 +665,13 @@
       gap: 4px;
     }
     #canvas-export-controls .field {
-      gap: 2px;
+      gap: 4px;
     }
     #canvas-export-controls .field label {
-      font-size: 7.5px;
+      font-size: 9px;
     }
     #canvas-export-controls .hint {
-      font-size: 7px;
+      font-size: 9px;
       line-height: 1.35;
       margin-top: 2px;
     }
@@ -749,17 +749,17 @@
       max-height: min(72vh, calc(100% - 20px));
     }
     #canvas-meta-controls .field {
-      gap: 2px;
+      gap: 4px;
     }
     #canvas-meta-controls .field label {
-      font-size: 7.5px;
+      font-size: 9px;
     }
     #canvas-meta-controls select {
-      font-size: 8px;
+      font-size: 9px;
       padding: 4px 6px;
     }
     #canvas-meta-controls .hint {
-      font-size: 7px;
+      font-size: 9px;
       line-height: 1.35;
       margin-top: 0;
       margin-bottom: 2px;
@@ -1022,11 +1022,14 @@
     }
     .vas-check {
       flex-direction: row;
+      flex-wrap: wrap;
       align-items: center;
       gap: 8px;
     }
-    .vas-check input { width: auto; accent-color: #5718C0; }
+    .vas-check input { width: auto; accent-color: #5718C0; flex-shrink: 0; }
     .vas-check label { text-transform: none; letter-spacing: 0; font-size: 9px; color: var(--text); }
+    .vas-check > .hint { flex: 1 1 100%; margin: 0; }
+    .vas-check > label.row { flex: 1 1 auto; min-width: 0; white-space: nowrap; }
     .kbd {
       font-family: var(--mono);
       font-size: 7px;
