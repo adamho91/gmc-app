@@ -1768,6 +1768,14 @@
           <p class="hint">Video renders at full size. 4K is 3840² — expect a longer encode.</p>
         </div>
         <div class="field">
+          <div class="range-row">
+            <label for="export-sphere-size">Sphere size</label>
+            <span class="val" id="export-sphere-size-val">92%</span>
+          </div>
+          <input type="range" id="export-sphere-size" min="70" max="100" value="92" step="1" />
+          <p class="hint">How large the sphere is inside the export frame. Raise this if 4K looks tiny.</p>
+        </div>
+        <div class="field">
           <label for="export-video-quality">MP4 / WebM quality</label>
           <select id="export-video-quality">
             <option value="draft">Draft</option>

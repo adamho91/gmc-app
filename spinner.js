@@ -1295,13 +1295,16 @@ function setCanvasBackgroundMode(mode) {
 function layoutMetrics(w, h) {
   const cx = w * 0.5;
   const cy = h * 0.48;
-  const rad = Math.min(w, h) * 0.42 * STATE.circlePad;
+  const pad =
+    exportMode && Number.isFinite(exportMode.spherePad)
+      ? exportMode.spherePad
+      : STATE.circlePad;
+  const rad = Math.min(w, h) * 0.42 * pad;
   return { cx, cy, rad };
 }
 
 function shouldApplyViewportLayoutScale() {
-  if (!exportMode) return true;
-  return !!exportMode.liveEmbed;
+  return true;
 }
 
 function getViewportLayoutScale(w, h) {
@@ -1313,8 +1316,10 @@ function getViewportLayoutScale(w, h) {
   if (denomSq <= 0) return 1;
   const limb = (STATE.focal * R) / Math.sqrt(denomSq);
   if (!Number.isFinite(limb) || limb <= 0) return 1;
-  /* Shrink content so the projected sphere never overflows the clip circle; never enlarge. */
-  return Math.min(1, rad / limb);
+  const scale = rad / limb;
+  /* Live view: only shrink so the sphere fits. Export: also enlarge so 4K fills the frame. */
+  if (exportMode && !exportMode.liveEmbed) return scale;
+  return Math.min(1, scale);
 }
 
 function scaleProjectedSegment(seg, layoutScale) {
@@ -1592,11 +1597,12 @@ function buildTypeSpherePathMarkup() {
   const { contours, halfW, halfH } = data;
   const pathElements = [];
   const exportMs = getExportTimeMs(typeof performance !== "undefined" ? performance.now() : 0);
+  const layoutScale = shouldApplyViewportLayoutScale() ? getViewportLayoutScale(w, h) : 1;
 
   const appendLayer = (spinOff, fill) => {
     const dParts = [];
     for (const loop of contours) {
-      const segs = loopToSegments(loop, halfW, halfH, spinOff, rad, exportMs);
+      const segs = loopToSegments(loop, halfW, halfH, spinOff, rad, exportMs, layoutScale);
       for (const seg of segs) {
         if (seg.length < 3) continue;
         dParts.push(segmentToPathD(seg, cx, cy));
@@ -2938,7 +2944,7 @@ function readEmbedBackground(background) {
   return { canvasBg, sphere };
 }
 
-function beginExport({ width, height, transparentBg = false, background }) {
+function beginExport({ width, height, transparentBg = false, background, spherePad }) {
   const { canvasBg, sphere } = readEmbedBackground(background);
   const snapshot = {
     playing: STATE.playing,
@@ -2948,6 +2954,10 @@ function beginExport({ width, height, transparentBg = false, background }) {
     canvasH: pInst?.height || 0,
   };
   STATE.playing = false;
+  const pad =
+    Number.isFinite(spherePad) && spherePad > 0
+      ? Math.max(0.5, Math.min(1, spherePad))
+      : STATE.circlePad;
   exportMode = {
     width,
     height,
@@ -2956,6 +2966,7 @@ function beginExport({ width, height, transparentBg = false, background }) {
     transparentBg: !!canvasBg.transparent,
     exportBgColor: canvasBg.color || "#ffffff",
     sphereInterior: sphere,
+    spherePad: pad,
   };
   if (pInst) pInst.resizeCanvas(width, height);
   return snapshot;

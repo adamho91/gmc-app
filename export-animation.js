@@ -101,10 +101,18 @@
     const videoQuality = VIDEO_QUALITY[$("export-video-quality")?.value]
       ? $("export-video-quality").value
       : "standard";
+    const sphereSizePct = Math.max(
+      70,
+      Math.min(100, parseInt($("export-sphere-size")?.value, 10) || 92)
+    );
+    const spherePad = sphereSizePct / 100;
     const totalFrames = Math.max(1, Math.round(duration * fps));
     if ($("export-width")) $("export-width").value = String(width);
     if ($("export-height")) $("export-height").value = String(height);
-    return { duration, fps, rotations, width, height, totalFrames, videoQuality };
+    if ($("export-sphere-size")) $("export-sphere-size").value = String(sphereSizePct);
+    const sphereVal = $("export-sphere-size-val");
+    if (sphereVal) sphereVal.textContent = `${sphereSizePct}%`;
+    return { duration, fps, rotations, width, height, totalFrames, videoQuality, spherePad, sphereSizePct };
   }
 
   function readLottieCaptureOptions(opts) {
@@ -192,6 +200,7 @@
       width,
       height,
       background: exportBackground,
+      spherePad: opts.spherePad,
     });
 
     try {
@@ -626,6 +635,7 @@
       width,
       height,
       background: exportBackground,
+      spherePad: opts.spherePad,
     });
 
     const canvas = document.createElement("canvas");
@@ -1172,6 +1182,7 @@
           width: s.width,
           height: s.height,
           videoQuality: s.videoQuality,
+          sphereSize: s.sphereSizePct,
         })
       );
     } catch (_) {
@@ -1191,6 +1202,11 @@
       if (data.height != null && $("export-height")) $("export-height").value = String(data.height);
       if (data.videoQuality && VIDEO_QUALITY[data.videoQuality] && $("export-video-quality")) {
         $("export-video-quality").value = data.videoQuality;
+      }
+      if (data.sphereSize != null && $("export-sphere-size")) {
+        $("export-sphere-size").value = String(data.sphereSize);
+        const sphereVal = $("export-sphere-size-val");
+        if (sphereVal) sphereVal.textContent = `${data.sphereSize}%`;
       }
     } catch (_) {
       /* corrupt storage */
@@ -1279,11 +1295,16 @@
     wireSizePresets();
     wireExportBackground();
     wireLottieLayers();
-    ["export-duration", "export-fps", "export-rotations", "export-width", "export-height", "export-video-quality"].forEach(
+    ["export-duration", "export-fps", "export-rotations", "export-width", "export-height", "export-video-quality", "export-sphere-size"].forEach(
       (id) => {
         $(id)?.addEventListener("change", persistVideoSettings);
       }
     );
+    $("export-sphere-size")?.addEventListener("input", () => {
+      const v = parseInt($("export-sphere-size").value, 10) || 92;
+      const sphereVal = $("export-sphere-size-val");
+      if (sphereVal) sphereVal.textContent = `${v}%`;
+    });
     $("export-lottie-btn")?.addEventListener("click", () => runExport("lottie"));
     $("export-mp4-btn")?.addEventListener("click", () => {
       persistVideoSettings();
