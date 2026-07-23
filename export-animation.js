@@ -61,6 +61,7 @@
   function setButtonsDisabled(disabled) {
     $("export-lottie-btn")?.toggleAttribute("disabled", disabled);
     $("export-mp4-btn")?.toggleAttribute("disabled", disabled);
+    $("export-webm-btn")?.toggleAttribute("disabled", disabled);
     $("export-svg-seq-btn")?.toggleAttribute("disabled", disabled);
     $("export-svg-anim-btn")?.toggleAttribute("disabled", disabled);
     $("export-embed-btn")?.toggleAttribute("disabled", disabled);
@@ -1117,30 +1118,34 @@
             downloads[0]?.mode
           ),
         });
-      } else {
-        const { frames, width: outW, height: outH } = captureResult;
-        setStatus(`Encoding MP4 · ${opts.width}×${opts.height} · ${opts.videoQuality}…`);
-        setProgress(70);
-        const mp4Blob = await encodeMp4WebCodecs(frames, opts);
-
-        setStatus(`Encoding WebM · ${opts.width}×${opts.height}…`);
-        setProgress(85);
-        let webmBlob = await encodeWebmWebCodecs(frames, opts);
-        if (!webmBlob) {
-          webmBlob = await encodeWebmMediaRecorder(frames, opts);
-        }
-
+      } else if (kind === "mp4" || kind === "webm") {
+        const { frames } = captureResult;
         const downloads = [];
-        if (mp4Blob) {
-          downloads.push({ blob: mp4Blob, filename: exportFilename("mp4", opts) });
-        }
-        if (webmBlob) {
-          downloads.push({ blob: webmBlob, filename: exportFilename("webm", opts) });
-        }
-        if (!downloads.length) {
-          throw new Error("Video encoding is not supported in this browser.");
+
+        if (kind === "mp4") {
+          setStatus(`Encoding MP4 · ${opts.width}×${opts.height} · ${opts.videoQuality}…`);
+          setProgress(70);
+          const mp4Blob = await encodeMp4WebCodecs(frames, opts);
+          if (mp4Blob) {
+            downloads.push({ blob: mp4Blob, filename: exportFilename("mp4", opts) });
+          } else {
+            throw new Error("MP4 encoding is not supported in this browser (needs Chrome/Edge WebCodecs).");
+          }
+        } else {
+          setStatus(`Encoding WebM · ${opts.width}×${opts.height} · ${opts.videoQuality}…`);
+          setProgress(70);
+          let webmBlob = await encodeWebmWebCodecs(frames, opts);
+          if (!webmBlob) {
+            webmBlob = await encodeWebmMediaRecorder(frames, opts);
+          }
+          if (webmBlob) {
+            downloads.push({ blob: webmBlob, filename: exportFilename("webm", opts) });
+          } else {
+            throw new Error("WebM encoding is not supported in this browser.");
+          }
         }
 
+        setProgress(90);
         await downloadFiles(downloads);
         const labels = downloads.map((d) => d.filename.split(".").pop().toUpperCase());
         setStatus(
@@ -1154,9 +1159,11 @@
           frameCount: opts.totalFrames,
           layerId: "all",
           bgColor: readExportBackground().transparent ? "transparent" : readExportBackground().color,
-          lastType: "video",
+          lastType: kind,
           baseName: window.GMCSvgExport?.assetBaseName(opts, "all"),
         });
+      } else {
+        throw new Error(`Unknown export kind: ${kind}`);
       }
       setProgress(100);
     } catch (err) {
@@ -1309,6 +1316,10 @@
     $("export-mp4-btn")?.addEventListener("click", () => {
       persistVideoSettings();
       runExport("mp4");
+    });
+    $("export-webm-btn")?.addEventListener("click", () => {
+      persistVideoSettings();
+      runExport("webm");
     });
     $("export-svg-seq-btn")?.addEventListener("click", () => runSvgExport("sequence"));
     $("export-svg-anim-btn")?.addEventListener("click", () => runSvgExport("animated"));
