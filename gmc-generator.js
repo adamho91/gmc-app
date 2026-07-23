@@ -137,13 +137,19 @@ function lerpColor(ca, cb, t) {
 let currentSeed = Date.now() & 0xFFFFFF;
 let animTime = 0;
 
-function draw(newSeed) {
+function draw(newSeed, opts) {
   if (newSeed !== undefined) currentSeed = newSeed;
   seedRng(currentSeed);
 
   // Read all controls
   const COLS       = parseInt(document.getElementById('cols').value);
-  const CS         = parseInt(document.getElementById('cellSize').value);
+  let CS           = parseInt(document.getElementById('cellSize').value);
+  const exportPx   = opts && Number(opts.exportPx);
+  if (Number.isFinite(exportPx) && exportPx > 0) {
+    /* Bypass the cellSize range max so MP4 can hit 2K/4K. */
+    CS = Math.max(1, Math.round(exportPx / COLS));
+    while ((COLS * CS) % 2 !== 0) CS += 1;
+  }
   const ROWS       = COLS;
   const bCount     = parseInt(document.getElementById('blobCount').value);
   const rMin       = parseFloat(document.getElementById('rMin').value);

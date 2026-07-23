@@ -161,23 +161,14 @@
     setTimeout(() => URL.revokeObjectURL(url), 30_000);
   }
 
-  /** Temporarily enlarge cell size so the grid renders at the chosen resolution. */
-  function beginSizedRender(targetPx) {
+  /** Pixel size for high-res MP4 frames (0 = live canvas). */
+  function resolveExportPx(targetPx) {
     const colsEl = document.getElementById('cols');
     const cellEl = document.getElementById('cellSize');
-    if (!colsEl || !cellEl) return () => {};
-
-    const cols = Math.max(1, parseInt(colsEl.value, 10) || 25);
-    const originalCell = cellEl.value;
-    const livePx = cols * (parseInt(originalCell, 10) || 36);
-    const desired = targetPx > 0 ? targetPx : livePx;
-    let exportCell = Math.max(1, Math.round(desired / cols));
-    while ((cols * exportCell) % 2 !== 0) exportCell += 1;
-    cellEl.value = String(exportCell);
-
-    return () => {
-      cellEl.value = originalCell;
-    };
+    const cols = Math.max(1, parseInt(colsEl?.value, 10) || 25);
+    const livePx = cols * (parseInt(cellEl?.value, 10) || 36);
+    if (!targetPx || targetPx <= 0) return livePx;
+    return Math.max(livePx, targetPx);
   }
 
   async function exportMp4() {
@@ -192,7 +183,8 @@
     if (!sourceCanvas) throw new Error('2D canvas is unavailable.');
 
     const originalTime = animTime;
-    const restoreCell = beginSizedRender(targetPx);
+    const drawOpts = targetPx > 0 ? { exportPx: resolveExportPx(targetPx) } : undefined;
+    const sizeLabel = drawOpts?.exportPx || 'live';
     const totalFrames = Math.max(1, Math.round(duration * fps));
     const frameDurationUs = Math.round(1_000_000 / fps);
     let encoderError = null;
@@ -202,8 +194,8 @@
     setBusy(true);
 
     try {
-      setStatus('Preparing encoder…');
-      draw(currentSeed);
+      setStatus(`Preparing encoder · ${sizeLabel}${drawOpts ? 'px' : ''}…`);
+      draw(currentSeed, drawOpts);
 
       const width = evenDimension(sourceCanvas.width);
       const height = evenDimension(sourceCanvas.height);
@@ -233,7 +225,7 @@
       for (let index = 0; index < totalFrames; index += 1) {
         if (encoderError) throw encoderError;
         animTime = (index / totalFrames) * duration;
-        draw(currentSeed);
+        draw(currentSeed, drawOpts);
         encodeCtx.fillStyle = background;
         encodeCtx.fillRect(0, 0, width, height);
         encodeCtx.drawImage(sourceCanvas, 0, 0, width, height);
@@ -268,7 +260,6 @@
           // Encoder may already be closed after a WebCodecs error.
         }
       }
-      restoreCell();
       animTime = originalTime;
       draw(currentSeed);
       window.GMCGeneratorExporting = false;
