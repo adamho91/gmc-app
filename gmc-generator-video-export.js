@@ -6,6 +6,9 @@
   const status = document.getElementById('video-export-status');
   if (!button || !durationInput || !fpsInput || !status) return;
 
+  /* Match the 3D exporter’s high-res default; never downscale a larger live canvas. */
+  const EXPORT_MIN_PX = 2000;
+
   function setStatus(message) {
     status.textContent = message || '';
   }
@@ -35,8 +38,8 @@
   }
 
   async function configureEncoder(encoder, width, height, fps) {
-    const bitrate = Math.max(1_000_000, Math.round(width * height * fps * 0.1));
-    const codecs = ['avc1.42001f', 'avc1.4d0034', 'avc1.640028'];
+    const bitrate = Math.max(8_000_000, Math.round(width * height * fps * 0.18));
+    const codecs = ['avc1.640028', 'avc1.4d0034', 'avc1.42001f'];
     for (const codec of codecs) {
       const candidates = [
         { codec, width, height, bitrate, framerate: fps, bitrateMode: 'constant' },
@@ -67,6 +70,26 @@
     setTimeout(() => URL.revokeObjectURL(url), 30_000);
   }
 
+  /** Temporarily enlarge cell size so the grid renders at export resolution. */
+  function beginHighResRender() {
+    const colsEl = document.getElementById('cols');
+    const cellEl = document.getElementById('cellSize');
+    if (!colsEl || !cellEl) return () => {};
+
+    const cols = Math.max(1, parseInt(colsEl.value, 10) || 25);
+    const originalCell = cellEl.value;
+    const livePx = cols * (parseInt(originalCell, 10) || 36);
+    const targetPx = Math.max(livePx, EXPORT_MIN_PX);
+    let exportCell = Math.max(1, Math.round(targetPx / cols));
+    /* Keep width/height even for H.264. */
+    while ((cols * exportCell) % 2 !== 0) exportCell += 1;
+    cellEl.value = String(exportCell);
+
+    return () => {
+      cellEl.value = originalCell;
+    };
+  }
+
   async function exportMp4() {
     const duration = Math.max(1, Math.min(30, Number(durationInput.value) || 3));
     const fps = Math.max(12, Math.min(60, Math.round(Number(fpsInput.value) || 30)));
@@ -81,6 +104,7 @@
     if (!sourceCanvas) throw new Error('2D canvas is unavailable.');
 
     const originalTime = animTime;
+    const restoreCell = beginHighResRender();
     const totalFrames = Math.max(1, Math.round(duration * fps));
     const frameDurationUs = Math.round(1_000_000 / fps);
     let encoderError = null;
@@ -122,7 +146,8 @@
         if (encoderError) throw encoderError;
         animTime = (index / totalFrames) * duration;
         draw(currentSeed);
-        encodeCtx.clearRect(0, 0, width, height);
+        encodeCtx.fillStyle = '#000000';
+        encodeCtx.fillRect(0, 0, width, height);
         encodeCtx.drawImage(sourceCanvas, 0, 0, width, height);
 
         const frame = new VideoFrame(encodeCanvas, {
@@ -134,7 +159,7 @@
         frame.close();
 
         if (index % Math.max(1, Math.round(fps / 4)) === 0 || index === totalFrames - 1) {
-          setStatus(`Rendering ${index + 1} / ${totalFrames}…`);
+          setStatus(`Rendering ${index + 1} / ${totalFrames} · ${width}×${height}`);
           await nextPaint();
         }
       }
@@ -144,7 +169,7 @@
       await encoder.flush();
       muxer.finalize();
 
-      const filename = `gmc_2d_${currentSeed}_${duration}s_${fps}fps.mp4`;
+      const filename = `gmc_2d_${currentSeed}_${duration}s_${fps}fps_${width}x${height}.mp4`;
       download(new Blob([target.buffer], { type: 'video/mp4' }), filename);
       setStatus(`Saved MP4 · ${duration}s · ${fps} fps · ${width}×${height}`);
     } finally {
@@ -155,6 +180,7 @@
           // Encoder may already be closed after a WebCodecs error.
         }
       }
+      restoreCell();
       animTime = originalTime;
       draw(currentSeed);
       window.GMCGeneratorExporting = false;
