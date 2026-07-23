@@ -1738,8 +1738,25 @@
       <div id="canvas-export-controls" aria-label="Animation export">
         <p class="canvas-hud-title">Loop export</p>
         <div class="field">
+          <label for="export-timing-mode">Timing</label>
+          <select id="export-timing-mode">
+            <option value="manual" selected>Loop · set duration</option>
+            <option value="live">Match live spin speed</option>
+          </select>
+          <p class="hint" id="export-timing-hint">Forces N rotations into the duration below (usually faster than Play).</p>
+        </div>
+        <div class="field">
           <label for="export-duration">Duration (sec)</label>
-          <input type="number" id="export-duration" min="0.5" max="30" value="3" step="0.5" />
+          <input type="number" id="export-duration" min="0.5" max="120" value="3" step="0.5" />
+          <p class="hint" id="export-duration-hint" hidden></p>
+        </div>
+        <div class="field" id="export-speed-pct-wrap" hidden>
+          <div class="range-row">
+            <label for="export-speed-pct">Speed vs live</label>
+            <span class="val" id="export-speed-pct-val">100%</span>
+          </div>
+          <input type="range" id="export-speed-pct" min="50" max="200" value="100" step="5" />
+          <p class="hint">100% matches on-screen Play. Lower = slower export.</p>
         </div>
         <div class="field">
           <label for="export-fps">FPS</label>

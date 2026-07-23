@@ -3382,6 +3382,7 @@ window.GMCExport = {
   startEmbedLoop,
   stopEmbedLoop,
   getSpin: () => STATE.spin,
+  getSpinSpeed: () => STATE.spinSpeed,
   getHorizontalArcDeg: () => STATE.horizontalArcDeg,
   isTransparentBg: () => !!exportMode?.transparentBg,
 };

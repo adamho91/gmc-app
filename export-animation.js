@@ -5,6 +5,10 @@
   const TWO_PI = Math.PI * 2;
   let exportRunning = false;
   const VIDEO_SETTINGS_KEY = "gmc-3d-video-export";
+  /* Live Play advances spinSpeed once per p5 draw (~60fps target). */
+  const LIVE_DRAW_FPS = 60;
+  const MANUAL_DURATION_MAX = 30;
+  const LIVE_DURATION_MAX = 120;
 
   const VIDEO_QUALITY = {
     draft: { coeff: 0.08, min: 2_000_000 },
@@ -94,9 +98,10 @@
   }
 
   function readExportOptions() {
-    const duration = Math.max(0.5, Math.min(30, parseFloat($("export-duration")?.value) || 3));
+    const timingMode = $("export-timing-mode")?.value === "live" ? "live" : "manual";
     const fps = Math.max(1, Math.min(60, parseInt($("export-fps")?.value, 10) || 30));
     const rotations = Math.max(1, Math.min(8, parseInt($("export-rotations")?.value, 10) || 1));
+    const speedPct = Math.max(50, Math.min(200, parseInt($("export-speed-pct")?.value, 10) || 100));
     const width = evenDim(Math.max(256, Math.min(4096, parseInt($("export-width")?.value, 10) || 1200)));
     const height = evenDim(Math.max(256, Math.min(4096, parseInt($("export-height")?.value, 10) || 1200)));
     const videoQuality = VIDEO_QUALITY[$("export-video-quality")?.value]
@@ -107,13 +112,93 @@
       Math.min(100, parseInt($("export-sphere-size")?.value, 10) || 92)
     );
     const spherePad = sphereSizePct / 100;
+
+    let duration;
+    let liveSpinSpeed = 0;
+    if (timingMode === "live") {
+      liveSpinSpeed = Number(window.GMCExport?.getSpinSpeed?.()) || 0;
+      const radPerSec = liveSpinSpeed * LIVE_DRAW_FPS * (speedPct / 100);
+      if (radPerSec <= 1e-8) {
+        duration = MANUAL_DURATION_MAX;
+      } else {
+        duration = (rotations * Math.PI * 2) / radPerSec;
+      }
+      duration = Math.max(0.5, Math.min(LIVE_DURATION_MAX, Math.round(duration * 10) / 10));
+      if ($("export-duration")) $("export-duration").value = String(duration);
+    } else {
+      duration = Math.max(
+        0.5,
+        Math.min(MANUAL_DURATION_MAX, parseFloat($("export-duration")?.value) || 3)
+      );
+      if ($("export-duration")) $("export-duration").value = String(duration);
+    }
+
     const totalFrames = Math.max(1, Math.round(duration * fps));
     if ($("export-width")) $("export-width").value = String(width);
     if ($("export-height")) $("export-height").value = String(height);
     if ($("export-sphere-size")) $("export-sphere-size").value = String(sphereSizePct);
     const sphereVal = $("export-sphere-size-val");
     if (sphereVal) sphereVal.textContent = `${sphereSizePct}%`;
-    return { duration, fps, rotations, width, height, totalFrames, videoQuality, spherePad, sphereSizePct };
+    const speedVal = $("export-speed-pct-val");
+    if (speedVal) speedVal.textContent = `${speedPct}%`;
+
+    return {
+      timingMode,
+      duration,
+      fps,
+      rotations,
+      speedPct,
+      liveSpinSpeed,
+      width,
+      height,
+      totalFrames,
+      videoQuality,
+      spherePad,
+      sphereSizePct,
+    };
+  }
+
+  function syncTimingUi() {
+    const mode = $("export-timing-mode")?.value === "live" ? "live" : "manual";
+    const durationInput = $("export-duration");
+    const speedWrap = $("export-speed-pct-wrap");
+    const timingHint = $("export-timing-hint");
+    const durationHint = $("export-duration-hint");
+
+    if (speedWrap) speedWrap.hidden = mode !== "live";
+    if (durationInput) {
+      durationInput.readOnly = mode === "live";
+      durationInput.disabled = mode === "live";
+      durationInput.max = String(mode === "live" ? LIVE_DURATION_MAX : MANUAL_DURATION_MAX);
+    }
+
+    if (mode === "live") {
+      if (timingHint) {
+        timingHint.textContent =
+          "Uses on-screen Spin speed (Play). Duration is calculated from rotations.";
+      }
+      const opts = readExportOptions();
+      if (durationHint) {
+        durationHint.hidden = false;
+        if (opts.liveSpinSpeed <= 1e-8) {
+          durationHint.textContent =
+            "Spin speed is 0 — set Spin speed above 0 and hit Play to preview, then export.";
+        } else {
+          durationHint.textContent = `~${opts.duration}s for ${opts.rotations} rotation${
+            opts.rotations === 1 ? "" : "s"
+          } at ${opts.speedPct}% of live · ${opts.totalFrames} frames`;
+        }
+      }
+    } else {
+      if (timingHint) {
+        timingHint.textContent =
+          "Forces N rotations into the duration below (usually faster than Play).";
+      }
+      if (durationHint) {
+        durationHint.hidden = true;
+        durationHint.textContent = "";
+      }
+    }
   }
 
   function readLottieCaptureOptions(opts) {
@@ -510,6 +595,13 @@
     }
 
     const opts = readExportOptions();
+    syncTimingUi();
+
+    if (opts.timingMode === "live" && opts.liveSpinSpeed <= 1e-8) {
+      setStatus("Match live needs Spin speed > 0. Raise Spin speed in Motion, then export.");
+      return;
+    }
+
     const layerModes = readVectorLayerModes();
     const exportBackground = readExportBackground();
 
@@ -1010,6 +1102,22 @@
     }
 
     const opts = readExportOptions();
+    syncTimingUi();
+
+    if (opts.timingMode === "live" && opts.liveSpinSpeed <= 1e-8) {
+      setStatus("Match live needs Spin speed > 0. Raise Spin speed in Motion, then export.");
+      return;
+    }
+
+    if (opts.totalFrames > 900) {
+      const ok = confirm(
+        `This export is ${opts.duration}s @ ${opts.fps} fps = ${opts.totalFrames} frames` +
+          (opts.width >= 3000 ? ` at ${opts.width}×${opts.height}` : "") +
+          `. That can take a while and a lot of memory. Continue?`
+      );
+      if (!ok) return;
+    }
+
     const lottieCapture = kind === "lottie" ? readLottieCaptureOptions(opts) : null;
     const lottieLayerModes = kind === "lottie" ? readLottieLayerModes() : ["all"];
     const lottieFps = lottieCapture?.lottieFps || opts.fps;
@@ -1190,6 +1298,8 @@
           height: s.height,
           videoQuality: s.videoQuality,
           sphereSize: s.sphereSizePct,
+          timingMode: s.timingMode,
+          speedPct: s.speedPct,
         })
       );
     } catch (_) {
@@ -1202,9 +1312,15 @@
       const raw = localStorage.getItem(VIDEO_SETTINGS_KEY);
       if (!raw) return;
       const data = JSON.parse(raw);
+      if (data.timingMode && $("export-timing-mode")) $("export-timing-mode").value = data.timingMode;
       if (data.duration != null && $("export-duration")) $("export-duration").value = String(data.duration);
       if (data.fps != null && $("export-fps")) $("export-fps").value = String(data.fps);
       if (data.rotations != null && $("export-rotations")) $("export-rotations").value = String(data.rotations);
+      if (data.speedPct != null && $("export-speed-pct")) {
+        $("export-speed-pct").value = String(data.speedPct);
+        const speedVal = $("export-speed-pct-val");
+        if (speedVal) speedVal.textContent = `${data.speedPct}%`;
+      }
       if (data.width != null && $("export-width")) $("export-width").value = String(data.width);
       if (data.height != null && $("export-height")) $("export-height").value = String(data.height);
       if (data.videoQuality && VIDEO_QUALITY[data.videoQuality] && $("export-video-quality")) {
@@ -1302,15 +1418,40 @@
     wireSizePresets();
     wireExportBackground();
     wireLottieLayers();
-    ["export-duration", "export-fps", "export-rotations", "export-width", "export-height", "export-video-quality", "export-sphere-size"].forEach(
-      (id) => {
-        $(id)?.addEventListener("change", persistVideoSettings);
-      }
-    );
+    syncTimingUi();
+    [
+      "export-duration",
+      "export-fps",
+      "export-rotations",
+      "export-width",
+      "export-height",
+      "export-video-quality",
+      "export-sphere-size",
+      "export-timing-mode",
+      "export-speed-pct",
+    ].forEach((id) => {
+      $(id)?.addEventListener("change", () => {
+        syncTimingUi();
+        persistVideoSettings();
+      });
+    });
     $("export-sphere-size")?.addEventListener("input", () => {
       const v = parseInt($("export-sphere-size").value, 10) || 92;
       const sphereVal = $("export-sphere-size-val");
       if (sphereVal) sphereVal.textContent = `${v}%`;
+    });
+    $("export-speed-pct")?.addEventListener("input", () => {
+      const v = parseInt($("export-speed-pct").value, 10) || 100;
+      const speedVal = $("export-speed-pct-val");
+      if (speedVal) speedVal.textContent = `${v}%`;
+      if ($("export-timing-mode")?.value === "live") syncTimingUi();
+    });
+    $("export-timing-mode")?.addEventListener("change", syncTimingUi);
+    $("export-rotations")?.addEventListener("input", () => {
+      if ($("export-timing-mode")?.value === "live") syncTimingUi();
+    });
+    document.getElementById("speed")?.addEventListener("input", () => {
+      if ($("export-timing-mode")?.value === "live") syncTimingUi();
     });
     $("export-lottie-btn")?.addEventListener("click", () => runExport("lottie"));
     $("export-mp4-btn")?.addEventListener("click", () => {
