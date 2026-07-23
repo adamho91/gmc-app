@@ -120,8 +120,17 @@
 
   async function configureEncoder(encoder, width, height, fps, qualityKey) {
     const q = QUALITY[qualityKey] || QUALITY.standard;
-    const bitrate = Math.max(q.min, Math.round(width * height * fps * q.coeff));
-    const codecs = ['avc1.640028', 'avc1.4d0034', 'avc1.42001f'];
+    const pixels = width * height;
+    const bitrate = Math.max(
+      q.min,
+      Math.round(pixels * fps * q.coeff),
+      pixels >= 3840 * 3840 ? 40_000_000 : 0
+    );
+    /* Prefer High@5.1 / 5.2 for 4K; fall back to lower levels. */
+    const codecs =
+      pixels >= 1920 * 1920
+        ? ['avc1.640034', 'avc1.640033', 'avc1.640028', 'avc1.4d0034', 'avc1.42001f']
+        : ['avc1.640028', 'avc1.4d0034', 'avc1.42001f'];
     for (const codec of codecs) {
       const candidates = [
         { codec, width, height, bitrate, framerate: fps, bitrateMode: 'constant' },

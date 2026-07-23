@@ -710,8 +710,15 @@
       },
     });
 
-    const bitrate = Math.max(500_000, Math.round(width * height * fps * 0.08));
-    const codecCandidates = ["avc1.42001f", "avc1.4d0034", "avc1.640028"];
+    const bitrate = Math.max(
+      500_000,
+      Math.round(width * height * fps * 0.08),
+      width * height >= 3840 * 3840 ? 40_000_000 : 0
+    );
+    const codecCandidates =
+      width * height >= 1920 * 1920
+        ? ["avc1.640034", "avc1.640033", "avc1.640028", "avc1.4d0034", "avc1.42001f"]
+        : ["avc1.42001f", "avc1.4d0034", "avc1.640028"];
     let configuredCodec = null;
 
     for (const codec of codecCandidates) {
@@ -801,7 +808,11 @@
     }
 
     const { Muxer, ArrayBufferTarget } = await import("https://esm.sh/webm-muxer@4.0.1");
-    const bitrate = Math.max(500_000, Math.round(width * height * fps * 0.08));
+    const bitrate = Math.max(
+      500_000,
+      Math.round(width * height * fps * 0.08),
+      width * height >= 3840 * 3840 ? 40_000_000 : 0
+    );
     const profiles = [
       { muxCodec: "V_VP9", codec: "vp09.00.10.08" },
       { muxCodec: "V_VP8", codec: "vp8" },
@@ -1129,7 +1140,7 @@
   }
 
   function wireSizePresets() {
-    const presets = [$("export-size-1200"), $("export-size-2000")].filter(Boolean);
+    const presets = [$("export-size-1200"), $("export-size-2000"), $("export-size-3840")].filter(Boolean);
     const wEl = $("export-width");
     const hEl = $("export-height");
 
