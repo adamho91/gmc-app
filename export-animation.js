@@ -4,6 +4,13 @@
 (function () {
   const TWO_PI = Math.PI * 2;
   let exportRunning = false;
+  const VIDEO_SETTINGS_KEY = "gmc-3d-video-export";
+
+  const VIDEO_QUALITY = {
+    draft: { coeff: 0.08, min: 2_000_000 },
+    standard: { coeff: 0.18, min: 8_000_000 },
+    high: { coeff: 0.28, min: 16_000_000 },
+  };
 
   const LOTTIE_QUALITY = {
     compact: { maxEdge: 512, format: "image/webp", quality: 0.82, lottieFps: 0 },
@@ -89,10 +96,15 @@
     const duration = Math.max(0.5, Math.min(30, parseFloat($("export-duration")?.value) || 3));
     const fps = Math.max(1, Math.min(60, parseInt($("export-fps")?.value, 10) || 30));
     const rotations = Math.max(1, Math.min(8, parseInt($("export-rotations")?.value, 10) || 1));
-    const width = Math.max(256, Math.min(4096, parseInt($("export-width")?.value, 10) || 1200));
-    const height = Math.max(256, Math.min(4096, parseInt($("export-height")?.value, 10) || 1200));
+    const width = evenDim(Math.max(256, Math.min(4096, parseInt($("export-width")?.value, 10) || 1200)));
+    const height = evenDim(Math.max(256, Math.min(4096, parseInt($("export-height")?.value, 10) || 1200)));
+    const videoQuality = VIDEO_QUALITY[$("export-video-quality")?.value]
+      ? $("export-video-quality").value
+      : "standard";
     const totalFrames = Math.max(1, Math.round(duration * fps));
-    return { duration, fps, rotations, width, height, totalFrames };
+    if ($("export-width")) $("export-width").value = String(width);
+    if ($("export-height")) $("export-height").value = String(height);
+    return { duration, fps, rotations, width, height, totalFrames, videoQuality };
   }
 
   function readLottieCaptureOptions(opts) {
@@ -686,6 +698,42 @@
     }
   }
 
+  function videoBitrate(width, height, fps, qualityKey) {
+    const q = VIDEO_QUALITY[qualityKey] || VIDEO_QUALITY.standard;
+    const pixels = width * height;
+    return Math.max(
+      q.min,
+      Math.round(pixels * fps * q.coeff),
+      pixels >= 3840 * 3840 ? 40_000_000 : 0
+    );
+  }
+
+  async function configureAvcEncoder(encoder, width, height, fps, bitrate) {
+    const pixels = width * height;
+    const codecs =
+      pixels >= 1920 * 1920
+        ? ["avc1.640034", "avc1.640033", "avc1.640028", "avc1.4d0034", "avc1.42001f"]
+        : ["avc1.640028", "avc1.4d0034", "avc1.42001f"];
+    for (const codec of codecs) {
+      const configs = [
+        { codec, width, height, bitrate, framerate: fps, bitrateMode: "constant" },
+        { codec, width, height, bitrate, framerate: fps },
+        { codec, width, height, bitrate, bitrateMode: "constant" },
+      ];
+      for (const config of configs) {
+        try {
+          const support = await VideoEncoder.isConfigSupported(config);
+          if (!support.supported) continue;
+          encoder.configure(config);
+          if (encoder.state === "configured") return codec;
+        } catch (_) {
+          /* try next */
+        }
+      }
+    }
+    return null;
+  }
+
   async function encodeMp4WebCodecs(frames, opts) {
     const width = evenDim(opts.width);
     const height = evenDim(opts.height);
@@ -710,36 +758,8 @@
       },
     });
 
-    const bitrate = Math.max(
-      500_000,
-      Math.round(width * height * fps * 0.08),
-      width * height >= 3840 * 3840 ? 40_000_000 : 0
-    );
-    const codecCandidates =
-      width * height >= 1920 * 1920
-        ? ["avc1.640034", "avc1.640033", "avc1.640028", "avc1.4d0034", "avc1.42001f"]
-        : ["avc1.42001f", "avc1.4d0034", "avc1.640028"];
-    let configuredCodec = null;
-
-    for (const codec of codecCandidates) {
-      const configs = [
-        { codec, width, height, bitrate, framerate: fps, bitrateMode: "constant" },
-        { codec, width, height, bitrate, bitrateMode: "constant" },
-      ];
-      for (const config of configs) {
-        const support = await VideoEncoder.isConfigSupported(config);
-        if (!support.supported) continue;
-        try {
-          encoder.configure(config);
-          if (encoder.state === "closed") continue;
-          configuredCodec = codec;
-          break;
-        } catch (_) {
-          /* try next config */
-        }
-      }
-      if (configuredCodec) break;
-    }
+    const bitrate = videoBitrate(width, height, fps, opts.videoQuality);
+    const configuredCodec = await configureAvcEncoder(encoder, width, height, fps, bitrate);
 
     if (!configuredCodec || encoder.state !== "configured") {
       try {
@@ -808,11 +828,7 @@
     }
 
     const { Muxer, ArrayBufferTarget } = await import("https://esm.sh/webm-muxer@4.0.1");
-    const bitrate = Math.max(
-      500_000,
-      Math.round(width * height * fps * 0.08),
-      width * height >= 3840 * 3840 ? 40_000_000 : 0
-    );
+    const bitrate = videoBitrate(width, height, fps, opts.videoQuality);
     const profiles = [
       { muxCodec: "V_VP9", codec: "vp09.00.10.08" },
       { muxCodec: "V_VP8", codec: "vp8" },
@@ -835,16 +851,19 @@
 
       const configs = [
         { codec: profile.codec, width, height, bitrate, framerate: fps, bitrateMode: "constant" },
+        { codec: profile.codec, width, height, bitrate, framerate: fps },
         { codec: profile.codec, width, height, bitrate, bitrateMode: "constant" },
       ];
       let configured = false;
       for (const config of configs) {
-        const support = await VideoEncoder.isConfigSupported(config);
-        if (!support.supported) continue;
         try {
+          const support = await VideoEncoder.isConfigSupported(config);
+          if (!support.supported) continue;
           encoder.configure(config);
-          if (encoder.state !== "closed") configured = true;
-          break;
+          if (encoder.state === "configured") {
+            configured = true;
+            break;
+          }
         } catch (_) {
           /* try next config */
         }
@@ -1090,11 +1109,11 @@
         });
       } else {
         const { frames, width: outW, height: outH } = captureResult;
-        setStatus("Encoding MP4…");
+        setStatus(`Encoding MP4 · ${opts.width}×${opts.height} · ${opts.videoQuality}…`);
         setProgress(70);
         const mp4Blob = await encodeMp4WebCodecs(frames, opts);
 
-        setStatus("Encoding WebM…");
+        setStatus(`Encoding WebM · ${opts.width}×${opts.height}…`);
         setProgress(85);
         let webmBlob = await encodeWebmWebCodecs(frames, opts);
         if (!webmBlob) {
@@ -1114,7 +1133,9 @@
 
         await downloadFiles(downloads);
         const labels = downloads.map((d) => d.filename.split(".").pop().toUpperCase());
-        setStatus(`Saved ${labels.join(" + ")} · ${opts.duration}s · ${opts.fps} fps`);
+        setStatus(
+          `Saved ${labels.join(" + ")} · ${opts.duration}s · ${opts.fps} fps · ${opts.width}×${opts.height} · ${opts.videoQuality}`
+        );
         rememberExportMeta({
           width: opts.width,
           height: opts.height,
@@ -1139,8 +1160,50 @@
     }
   }
 
+  function persistVideoSettings() {
+    try {
+      const s = readExportOptions();
+      localStorage.setItem(
+        VIDEO_SETTINGS_KEY,
+        JSON.stringify({
+          duration: s.duration,
+          fps: s.fps,
+          rotations: s.rotations,
+          width: s.width,
+          height: s.height,
+          videoQuality: s.videoQuality,
+        })
+      );
+    } catch (_) {
+      /* private mode / quota */
+    }
+  }
+
+  function restoreVideoSettings() {
+    try {
+      const raw = localStorage.getItem(VIDEO_SETTINGS_KEY);
+      if (!raw) return;
+      const data = JSON.parse(raw);
+      if (data.duration != null && $("export-duration")) $("export-duration").value = String(data.duration);
+      if (data.fps != null && $("export-fps")) $("export-fps").value = String(data.fps);
+      if (data.rotations != null && $("export-rotations")) $("export-rotations").value = String(data.rotations);
+      if (data.width != null && $("export-width")) $("export-width").value = String(data.width);
+      if (data.height != null && $("export-height")) $("export-height").value = String(data.height);
+      if (data.videoQuality && VIDEO_QUALITY[data.videoQuality] && $("export-video-quality")) {
+        $("export-video-quality").value = data.videoQuality;
+      }
+    } catch (_) {
+      /* corrupt storage */
+    }
+  }
+
   function wireSizePresets() {
-    const presets = [$("export-size-1200"), $("export-size-2000"), $("export-size-3840")].filter(Boolean);
+    const presets = [
+      $("export-size-1200"),
+      $("export-size-2000"),
+      $("export-size-3000"),
+      $("export-size-3840"),
+    ].filter(Boolean);
     const wEl = $("export-width");
     const hEl = $("export-height");
 
@@ -1151,6 +1214,7 @@
         if (wEl) wEl.value = w;
         if (hEl) hEl.value = h;
         presets.forEach((b) => b.classList.toggle("is-active", b === btn));
+        persistVideoSettings();
       });
     });
 
@@ -1163,6 +1227,7 @@
     };
     wEl?.addEventListener("input", syncActive);
     hEl?.addEventListener("input", syncActive);
+    syncActive();
   }
 
   function wireExportBackground() {
@@ -1210,11 +1275,20 @@
   }
 
   function wireExportUi() {
+    restoreVideoSettings();
     wireSizePresets();
     wireExportBackground();
     wireLottieLayers();
+    ["export-duration", "export-fps", "export-rotations", "export-width", "export-height", "export-video-quality"].forEach(
+      (id) => {
+        $(id)?.addEventListener("change", persistVideoSettings);
+      }
+    );
     $("export-lottie-btn")?.addEventListener("click", () => runExport("lottie"));
-    $("export-mp4-btn")?.addEventListener("click", () => runExport("mp4"));
+    $("export-mp4-btn")?.addEventListener("click", () => {
+      persistVideoSettings();
+      runExport("mp4");
+    });
     $("export-svg-seq-btn")?.addEventListener("click", () => runSvgExport("sequence"));
     $("export-svg-anim-btn")?.addEventListener("click", () => runSvgExport("animated"));
     $("export-embed-btn")?.addEventListener("click", () => {
