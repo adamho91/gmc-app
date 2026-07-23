@@ -155,7 +155,16 @@
     const anchor = document.createElement('a');
     anchor.href = url;
     anchor.download = filename;
-    document.body.appendChild(anchor);
+    /* Prefer top document so downloads still fire from the 2D iframe tab. */
+    let host = document.body;
+    try {
+      if (window.top && window.top !== window && window.top.document?.body) {
+        host = window.top.document.body;
+      }
+    } catch (_) {
+      // Cross-origin top — stay in this frame.
+    }
+    host.appendChild(anchor);
     anchor.click();
     anchor.remove();
     setTimeout(() => URL.revokeObjectURL(url), 30_000);
@@ -195,6 +204,9 @@
 
     try {
       setStatus(`Preparing encoder · ${sizeLabel}${drawOpts ? 'px' : ''}…`);
+      /* Let the button/status paint before the first heavy frame. */
+      await nextPaint();
+      await nextPaint();
       draw(currentSeed, drawOpts);
 
       const width = evenDimension(sourceCanvas.width);
@@ -204,7 +216,13 @@
       encodeCanvas.height = height;
       const encodeCtx = encodeCanvas.getContext('2d', { alpha: false });
 
-      const { Muxer, ArrayBufferTarget } = await import('https://esm.sh/mp4-muxer@5.1.3');
+      let Muxer;
+      let ArrayBufferTarget;
+      try {
+        ({ Muxer, ArrayBufferTarget } = await import('https://esm.sh/mp4-muxer@5.1.3'));
+      } catch (err) {
+        throw new Error('Could not load MP4 encoder (blocked network?). Try Chrome/Edge again.');
+      }
       const target = new ArrayBufferTarget();
       const muxer = new Muxer({
         target,

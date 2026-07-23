@@ -313,6 +313,10 @@
     border-color: #000000;
     color: #ffffff;
   }
+  #canvas-action-controls .video-export-options label[hidden],
+  #canvas-action-controls #video-custom-wrap[hidden] {
+    display: none !important;
+  }
   #canvas-action-controls .video-export-options {
     display: grid;
     grid-template-columns: 1fr 1fr;
