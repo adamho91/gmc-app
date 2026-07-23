@@ -5,6 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>gmc generator</title>
 <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+<script>
+  (function () {
+    if (!/[?&]embed(?:=1|&|$)/.test(location.search)) return;
+    document.documentElement.classList.add("gmc-2d-embed");
+  })();
+</script>
 <link rel="stylesheet" href="gmc-generator.css">
 <link rel="stylesheet" href="dial-sliders.css">
 </head>
@@ -348,12 +354,71 @@
     <button type="button" id="btn-svg-copy" class="canvas-action-btn">Copy SVG</button>
     <div class="video-export-options">
       <label>Seconds <input type="number" id="video-duration" min="1" max="30" step="0.5" value="3"></label>
-      <label>FPS <input type="number" id="video-fps" min="12" max="60" step="1" value="30"></label>
+      <label>FPS
+        <select id="video-fps">
+          <option value="24">24</option>
+          <option value="30" selected>30</option>
+          <option value="60">60</option>
+        </select>
+      </label>
+      <label class="video-export-span">Size
+        <select id="video-size">
+          <option value="live">Live canvas</option>
+          <option value="1200">1200²</option>
+          <option value="2000" selected>2000²</option>
+          <option value="3000">3000²</option>
+          <option value="custom">Custom</option>
+        </select>
+      </label>
+      <label class="video-export-span" id="video-custom-wrap" hidden>Custom px
+        <input type="number" id="video-custom-size" min="256" max="4096" value="2400" step="2">
+      </label>
+      <label>Quality
+        <select id="video-quality">
+          <option value="draft">Draft</option>
+          <option value="standard" selected>Standard</option>
+          <option value="high">High</option>
+        </select>
+      </label>
+      <label>Background
+        <select id="video-bg">
+          <option value="black" selected>Black</option>
+          <option value="white">White</option>
+        </select>
+      </label>
     </div>
     <button type="button" id="btn-mp4" class="canvas-action-btn">Export MP4</button>
+    <button type="button" id="btn-embed" class="canvas-action-btn">Embed code</button>
     <div id="video-export-status" role="status" aria-live="polite"></div>
   </div>
   <canvas id="c"></canvas>
+</div>
+
+<div id="embed-modal" aria-hidden="true">
+  <div class="embed-modal-panel" role="dialog" aria-labelledby="embed-modal-title">
+    <div class="embed-modal-title" id="embed-modal-title">Embed live 2D player</div>
+    <p class="embed-modal-hint">Paste into Webflow → Embed (or any HTML page). The iframe loads this pattern from your hosted app URL.</p>
+    <div class="embed-modal-field">
+      <label for="embed-host">Player base URL</label>
+      <input type="url" id="embed-host" placeholder="Auto-detected when app is hosted online" autocomplete="off" spellcheck="false" />
+      <p class="embed-modal-hint">Must be where the app is hosted (e.g. Vercel) — not Webflow. Auto-fills over https://.</p>
+    </div>
+    <div class="embed-modal-field embed-modal-row">
+      <label>Display width
+        <input type="number" id="embed-display-w" min="200" max="2400" step="10" value="800" />
+      </label>
+      <label>Display height
+        <input type="number" id="embed-display-h" min="200" max="2400" step="10" value="800" />
+      </label>
+    </div>
+    <p class="embed-modal-hint" id="embed-status">Generating embed code…</p>
+    <textarea id="embed-text" readonly spellcheck="false" placeholder="Generating…"></textarea>
+    <div class="embed-modal-actions">
+      <button type="button" class="canvas-action-btn primary" id="embed-copy">Copy to clipboard</button>
+      <button type="button" class="canvas-action-btn" id="embed-regenerate">Regenerate</button>
+      <button type="button" class="canvas-action-btn" id="embed-close">Close</button>
+    </div>
+  </div>
 </div>
 
 <div id="import-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:100;align-items:center;justify-content:center;">
@@ -382,6 +447,7 @@
 <script src="gmc-generator-presets.js"></script>
 <script src="gmc-generator.js"></script>
 <script src="gmc-generator-video-export.js"></script>
+<script src="gmc-generator-embed-export.js"></script>
 <script src="dial-sliders.js"></script>
 </body>
 </html>

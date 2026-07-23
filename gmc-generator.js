@@ -958,6 +958,26 @@ function nextPresetName() {
   return `Preset ${i}`;
 }
 
+function readEmbedConfigFromUrl() {
+  if (!document.documentElement.classList.contains('gmc-2d-embed') &&
+      !/[?&]embed(?:=1|&|$)/.test(location.search)) {
+    return null;
+  }
+  const params = new URLSearchParams(location.search);
+  const payload = params.get('c');
+  if (!payload) return null;
+  try {
+    return JSON.parse(decodeURIComponent(escape(atob(payload))));
+  } catch (_) {
+    try {
+      return JSON.parse(atob(payload));
+    } catch (err) {
+      console.warn('GMC 2D embed: bad config payload', err);
+      return null;
+    }
+  }
+}
+
 function captureState() {
   const state = { seed: currentSeed };
   ALL_SLIDER_IDS.forEach(id => { const el = document.getElementById(id); if (el) state[id] = el.value; });
@@ -993,6 +1013,7 @@ function applyState(state) {
 }
 
 function saveCurrentState() {
+  if (document.documentElement.classList.contains('gmc-2d-embed')) return;
   try { localStorage.setItem(LS_STATE_KEY, JSON.stringify(captureState())); } catch(e) {}
 }
 
@@ -1225,6 +1246,11 @@ requestAnimationFrame(animFrame);
 // ── Init ──────────────────────────────────────────────────────────────────────
 initPresets()
   .then(() => {
+    const embedState = readEmbedConfigFromUrl();
+    if (embedState) {
+      applyState(embedState);
+      return;
+    }
     if (restoreState()) return;
     const defName = window.GMC_GENERATOR_DEFAULT_PRESET;
     const defState = defName && presetsStore[defName];
@@ -1241,6 +1267,11 @@ initPresets()
   .catch((err) => {
     console.warn(err);
     renderPresetList();
+    const embedState = readEmbedConfigFromUrl();
+    if (embedState) {
+      applyState(embedState);
+      return;
+    }
     if (!restoreState()) draw(currentSeed);
   });
 

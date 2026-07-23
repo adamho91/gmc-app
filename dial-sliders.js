@@ -10,7 +10,12 @@
   "use strict";
 
   /* Live embeds hide all controls — skip the work entirely. */
-  if (document.documentElement.classList.contains("gmc-embed")) return;
+  if (
+    document.documentElement.classList.contains("gmc-embed") ||
+    document.documentElement.classList.contains("gmc-2d-embed")
+  ) {
+    return;
+  }
 
   var registry = [];
 

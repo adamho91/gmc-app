@@ -3,11 +3,29 @@
   const button = document.getElementById('btn-mp4');
   const durationInput = document.getElementById('video-duration');
   const fpsInput = document.getElementById('video-fps');
+  const sizeSelect = document.getElementById('video-size');
+  const customWrap = document.getElementById('video-custom-wrap');
+  const customSizeInput = document.getElementById('video-custom-size');
+  const qualitySelect = document.getElementById('video-quality');
+  const bgSelect = document.getElementById('video-bg');
   const status = document.getElementById('video-export-status');
   if (!button || !durationInput || !fpsInput || !status) return;
 
-  /* Match the 3D exporter’s high-res default; never downscale a larger live canvas. */
-  const EXPORT_MIN_PX = 2000;
+  const STORAGE_KEY = 'gmc-2d-video-export';
+  const QUALITY = {
+    draft: { coeff: 0.08, min: 2_000_000 },
+    standard: { coeff: 0.18, min: 8_000_000 },
+    high: { coeff: 0.28, min: 16_000_000 },
+  };
+
+  const settingEls = [
+    durationInput,
+    fpsInput,
+    sizeSelect,
+    customSizeInput,
+    qualitySelect,
+    bgSelect,
+  ].filter(Boolean);
 
   function setStatus(message) {
     status.textContent = message || '';
@@ -15,8 +33,9 @@
 
   function setBusy(busy) {
     button.disabled = busy;
-    durationInput.disabled = busy;
-    fpsInput.disabled = busy;
+    settingEls.forEach((el) => {
+      el.disabled = busy;
+    });
     button.textContent = busy ? 'Exporting…' : 'Export MP4';
   }
 
@@ -37,8 +56,71 @@
     }
   }
 
-  async function configureEncoder(encoder, width, height, fps) {
-    const bitrate = Math.max(8_000_000, Math.round(width * height * fps * 0.18));
+  function syncCustomVisibility() {
+    if (!customWrap || !sizeSelect) return;
+    customWrap.hidden = sizeSelect.value !== 'custom';
+  }
+
+  function readSettings() {
+    const duration = Math.max(1, Math.min(30, Number(durationInput.value) || 3));
+    const fps = Math.max(12, Math.min(60, Math.round(Number(fpsInput.value) || 30)));
+    const sizeMode = sizeSelect ? sizeSelect.value : '2000';
+    let targetPx = 2000;
+    if (sizeMode === 'live') targetPx = 0;
+    else if (sizeMode === 'custom') {
+      targetPx = Math.max(256, Math.min(4096, Math.round(Number(customSizeInput?.value) || 2400)));
+    } else {
+      targetPx = Math.max(256, Math.min(4096, parseInt(sizeMode, 10) || 2000));
+    }
+    const quality = QUALITY[qualitySelect?.value] ? qualitySelect.value : 'standard';
+    const background = bgSelect?.value === 'white' ? '#ffffff' : '#000000';
+
+    durationInput.value = String(duration);
+    fpsInput.value = String(fps);
+    if (customSizeInput && sizeMode === 'custom') customSizeInput.value = String(targetPx);
+
+    return { duration, fps, sizeMode, targetPx, quality, background };
+  }
+
+  function persistSettings() {
+    try {
+      const s = readSettings();
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          duration: s.duration,
+          fps: s.fps,
+          size: sizeSelect?.value || '2000',
+          custom: customSizeInput?.value || '2400',
+          quality: qualitySelect?.value || 'standard',
+          bg: bgSelect?.value || 'black',
+        })
+      );
+    } catch (_) {
+      // Ignore private-mode / quota errors.
+    }
+  }
+
+  function restoreSettings() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const data = JSON.parse(raw);
+      if (data.duration != null) durationInput.value = String(data.duration);
+      if (data.fps != null) fpsInput.value = String(data.fps);
+      if (sizeSelect && data.size) sizeSelect.value = data.size;
+      if (customSizeInput && data.custom) customSizeInput.value = String(data.custom);
+      if (qualitySelect && data.quality) qualitySelect.value = data.quality;
+      if (bgSelect && data.bg) bgSelect.value = data.bg;
+    } catch (_) {
+      // Ignore corrupt storage.
+    }
+    syncCustomVisibility();
+  }
+
+  async function configureEncoder(encoder, width, height, fps, qualityKey) {
+    const q = QUALITY[qualityKey] || QUALITY.standard;
+    const bitrate = Math.max(q.min, Math.round(width * height * fps * q.coeff));
     const codecs = ['avc1.640028', 'avc1.4d0034', 'avc1.42001f'];
     for (const codec of codecs) {
       const candidates = [
@@ -70,8 +152,8 @@
     setTimeout(() => URL.revokeObjectURL(url), 30_000);
   }
 
-  /** Temporarily enlarge cell size so the grid renders at export resolution. */
-  function beginHighResRender() {
+  /** Temporarily enlarge cell size so the grid renders at the chosen resolution. */
+  function beginSizedRender(targetPx) {
     const colsEl = document.getElementById('cols');
     const cellEl = document.getElementById('cellSize');
     if (!colsEl || !cellEl) return () => {};
@@ -79,9 +161,8 @@
     const cols = Math.max(1, parseInt(colsEl.value, 10) || 25);
     const originalCell = cellEl.value;
     const livePx = cols * (parseInt(originalCell, 10) || 36);
-    const targetPx = Math.max(livePx, EXPORT_MIN_PX);
-    let exportCell = Math.max(1, Math.round(targetPx / cols));
-    /* Keep width/height even for H.264. */
+    const desired = targetPx > 0 ? targetPx : livePx;
+    let exportCell = Math.max(1, Math.round(desired / cols));
     while ((cols * exportCell) % 2 !== 0) exportCell += 1;
     cellEl.value = String(exportCell);
 
@@ -91,10 +172,8 @@
   }
 
   async function exportMp4() {
-    const duration = Math.max(1, Math.min(30, Number(durationInput.value) || 3));
-    const fps = Math.max(12, Math.min(60, Math.round(Number(fpsInput.value) || 30)));
-    durationInput.value = String(duration);
-    fpsInput.value = String(fps);
+    const { duration, fps, targetPx, quality, background } = readSettings();
+    persistSettings();
 
     if (typeof VideoEncoder === 'undefined' || typeof VideoFrame === 'undefined') {
       throw new Error('MP4 export needs Chrome or Edge with WebCodecs enabled.');
@@ -104,7 +183,7 @@
     if (!sourceCanvas) throw new Error('2D canvas is unavailable.');
 
     const originalTime = animTime;
-    const restoreCell = beginHighResRender();
+    const restoreCell = beginSizedRender(targetPx);
     const totalFrames = Math.max(1, Math.round(duration * fps));
     const frameDurationUs = Math.round(1_000_000 / fps);
     let encoderError = null;
@@ -139,14 +218,14 @@
         },
       });
 
-      const codec = await configureEncoder(encoder, width, height, fps);
+      const codec = await configureEncoder(encoder, width, height, fps, quality);
       if (!codec) throw new Error('This browser cannot encode H.264 MP4 at the selected size.');
 
       for (let index = 0; index < totalFrames; index += 1) {
         if (encoderError) throw encoderError;
         animTime = (index / totalFrames) * duration;
         draw(currentSeed);
-        encodeCtx.fillStyle = '#000000';
+        encodeCtx.fillStyle = background;
         encodeCtx.fillRect(0, 0, width, height);
         encodeCtx.drawImage(sourceCanvas, 0, 0, width, height);
 
@@ -171,7 +250,7 @@
 
       const filename = `gmc_2d_${currentSeed}_${duration}s_${fps}fps_${width}x${height}.mp4`;
       download(new Blob([target.buffer], { type: 'video/mp4' }), filename);
-      setStatus(`Saved MP4 · ${duration}s · ${fps} fps · ${width}×${height}`);
+      setStatus(`Saved · ${duration}s · ${fps} fps · ${width}×${height} · ${quality}`);
     } finally {
       if (encoder && encoder.state !== 'closed') {
         try {
@@ -187,6 +266,15 @@
       setBusy(false);
     }
   }
+
+  restoreSettings();
+  settingEls.forEach((el) => {
+    el.addEventListener('change', () => {
+      syncCustomVisibility();
+      persistSettings();
+    });
+  });
+  sizeSelect?.addEventListener('input', syncCustomVisibility);
 
   button.addEventListener('click', () => {
     exportMp4().catch((error) => {
