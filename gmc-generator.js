@@ -171,18 +171,21 @@ function resolveCanvasMetrics(cols, cellSize, opts) {
   let requestedW = clampCanvasDimension(widthInput?.value || (cols * cellSize), DEFAULT_CANVAS_WIDTH);
   let requestedH = clampCanvasDimension(heightInput?.value || (cols * cellSize), DEFAULT_CANVAS_HEIGHT);
   const exportPx = opts && Number(opts.exportPx);
-  if (Number.isFinite(exportPx) && exportPx > 0) {
+  const exportMode = Number.isFinite(exportPx) && exportPx > 0;
+  const primitiveLock = !exportMode && document.getElementById('canvasPrimitiveLock')?.checked !== false;
+  if (exportMode) {
     requestedW = Math.max(1, Math.round(exportPx));
     requestedH = Math.max(1, Math.round(exportPx));
   }
 
-  const cell = Math.max(1, Math.round(requestedW / cols));
-  const W = cols * cell;
+  const rawCell = requestedW / cols;
+  const cell = primitiveLock ? Math.max(1, Math.round(rawCell)) : rawCell;
+  const W = primitiveLock ? cols * cell : requestedW;
   const rows = Math.max(1, Math.round(requestedH / cell));
-  const H = rows * cell;
+  const H = primitiveLock ? rows * cell : requestedH;
   setCanvasDimensionLabel('v-canvas-width', W);
   setCanvasDimensionLabel('v-canvas-height', H);
-  return { W, H, CS: cell, ROWS: rows };
+  return { W, H, CS: cell, ROWS: rows, primitiveLock };
 }
 
 function normalizeCanvasDimensionInputs() {
@@ -191,8 +194,10 @@ function normalizeCanvasDimensionInputs() {
   const metrics = resolveCanvasMetrics(cols, cellSize);
   const widthInput = document.getElementById('canvasWidth');
   const heightInput = document.getElementById('canvasHeight');
-  if (widthInput) widthInput.value = metrics.W;
-  if (heightInput) heightInput.value = metrics.H;
+  if (metrics.primitiveLock) {
+    if (widthInput) widthInput.value = metrics.W;
+    if (heightInput) heightInput.value = metrics.H;
+  }
 }
 
 function draw(newSeed, opts) {
@@ -841,6 +846,11 @@ for (const [id, valId] of Object.entries(SLIDERS)) {
 
 document.getElementById('dotOsc').addEventListener('change', () => { saveCurrentState(); draw(); });
 document.getElementById('warpOsc').addEventListener('change', () => { saveCurrentState(); draw(); });
+document.getElementById('canvasPrimitiveLock').addEventListener('change', () => {
+  normalizeCanvasDimensionInputs();
+  saveCurrentState();
+  draw();
+});
 
 document.getElementById('btn-gen').addEventListener('click', () => {
   draw(Math.floor(Math.random() * 0xFFFFFF));
@@ -889,7 +899,7 @@ document.getElementById('btn-svg-copy').addEventListener('click', () => {
 const ALL_SLIDER_IDS = Object.keys(SLIDERS);
 const META_STROKE_IDS = new Set(['ends', 'deep', 'mix_deep', 'family_random', 'all_swatches', 'black', 'legacy_mid']);
 const ALL_SELECT_IDS = ['checkerStyle','palette','patType','patColor','patBlend','warpType','metaMode','metaColor','metaStroke'];
-const ALL_CHECKBOX_IDS = ['dotOsc', 'warpOsc'];
+const ALL_CHECKBOX_IDS = ['canvasPrimitiveLock', 'dotOsc', 'warpOsc'];
 const LS_STATE_KEY   = 'gmc_state';
 const LS_PRESETS_KEY = 'gmc_presets';
 const IDB_NAME = 'gmc-generator';
