@@ -87,6 +87,20 @@
     cursor: pointer;
   }
   select:hover { border-color: #555555; }
+  #sidebar input[type=number] {
+    background: #1a1a1a;
+    color: #c8c8c8;
+    border: 1px solid #333333;
+    font-family: inherit;
+    font-size: 10px;
+    padding: 5px 7px;
+    width: 100%;
+    outline: none;
+  }
+  #sidebar input[type=number]:hover,
+  #sidebar input[type=number]:focus {
+    border-color: #555555;
+  }
   .toggle-row { flex-direction: row; align-items: center; justify-content: space-between; }
   .toggle-row label { color: #888888; }
   .switch { position: relative; display: inline-block; width: 32px; height: 16px; flex: none; }

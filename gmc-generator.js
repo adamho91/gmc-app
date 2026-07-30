@@ -136,6 +136,31 @@ function lerpColor(ca, cb, t) {
 // ── Main Draw ─────────────────────────────────────────────────────────────────
 let currentSeed = Date.now() & 0xFFFFFF;
 let animTime = 0;
+const DEFAULT_CANVAS_SIZE = 1440;
+const CANVAS_SIZE_MIN = 256;
+const CANVAS_SIZE_MAX = 4096;
+
+function clampCanvasSize(value) {
+  const n = Math.round(Number(value));
+  if (!Number.isFinite(n)) return DEFAULT_CANVAS_SIZE;
+  return Math.max(CANVAS_SIZE_MIN, Math.min(CANVAS_SIZE_MAX, n));
+}
+
+function syncCanvasSizeLabel() {
+  const input = document.getElementById('canvasSize');
+  const label = document.getElementById('v-canvas-size');
+  if (!input || !label) return;
+  label.textContent = clampCanvasSize(input.value);
+}
+
+function setCanvasSizeFromGrid() {
+  const cols = parseInt(document.getElementById('cols').value, 10);
+  const cell = parseFloat(document.getElementById('cellSize').value);
+  const input = document.getElementById('canvasSize');
+  if (!input || !Number.isFinite(cols) || !Number.isFinite(cell)) return;
+  input.value = clampCanvasSize(cols * cell);
+  syncCanvasSizeLabel();
+}
 
 function draw(newSeed, opts) {
   if (newSeed !== undefined) currentSeed = newSeed;
@@ -143,12 +168,11 @@ function draw(newSeed, opts) {
 
   // Read all controls
   const COLS       = parseInt(document.getElementById('cols').value);
-  let CS           = parseInt(document.getElementById('cellSize').value);
+  let CS           = parseFloat(document.getElementById('cellSize').value);
+  let canvasPx     = clampCanvasSize(document.getElementById('canvasSize')?.value || (COLS * CS));
   const exportPx   = opts && Number(opts.exportPx);
   if (Number.isFinite(exportPx) && exportPx > 0) {
-    /* Bypass the cellSize range max so MP4 can hit 2K/4K. */
-    CS = Math.max(1, Math.round(exportPx / COLS));
-    while ((COLS * CS) % 2 !== 0) CS += 1;
+    canvasPx = Math.max(1, Math.round(exportPx));
   }
   const ROWS       = COLS;
   const bCount     = parseInt(document.getElementById('blobCount').value);
@@ -205,8 +229,9 @@ function draw(newSeed, opts) {
   const metaPulse    = parseFloat(document.getElementById('metaPulse').value);
   const metaFlow     = parseFloat(document.getElementById('metaFlow').value);
 
-  const W = COLS * CS;
-  const H = ROWS * CS;
+  CS = canvasPx / COLS;
+  const W = canvasPx;
+  const H = canvasPx;
   canvas.width = W;
   canvas.height = H;
 
@@ -746,6 +771,7 @@ function draw(newSeed, opts) {
 
 // ── Wiring ────────────────────────────────────────────────────────────────────
 const SLIDERS = {
+  canvasSize:'v-canvas-size',
   cols:'v-cols', cellSize:'v-cell', checkerVar:'v-checker-var', blobCount:'v-blobs',
   rMin:'v-rmin', rMax:'v-rmax', blobShape:'v-shape', softness:'v-soft',
   megaCount:'v-mega', megaScale:'v-megascale', megaLobes:'v-lobes', lobeScatter:'v-lscatter', megaShape:'v-megashape',
@@ -767,6 +793,8 @@ for (const [id, valId] of Object.entries(SLIDERS)) {
   if (!el || !vl) continue;
   el.addEventListener('input', () => {
     vl.textContent = parseFloat(el.value).toFixed(el.step && parseFloat(el.step) < 1 ? 2 : 0);
+    if (id === 'canvasSize') syncCanvasSizeLabel();
+    if (id === 'cellSize') setCanvasSizeFromGrid();
     draw();
   });
 }
@@ -1001,6 +1029,11 @@ function applyState(state) {
       if (vl) vl.textContent = parseFloat(state[id]).toFixed(parseFloat(el.step) < 1 ? 2 : 0);
     }
   });
+  if (state.canvasSize === undefined && state.cols !== undefined && state.cellSize !== undefined) {
+    const input = document.getElementById('canvasSize');
+    if (input) input.value = clampCanvasSize(parseFloat(state.cols) * parseFloat(state.cellSize));
+    syncCanvasSizeLabel();
+  }
   ALL_SELECT_IDS.forEach(id => {
     const el = document.getElementById(id);
     if (!el || state[id] === undefined) return;
