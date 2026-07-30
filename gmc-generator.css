@@ -60,6 +60,11 @@
     justify-content: space-between;
   }
   .ctrl label span { color: #c8c8c8; }
+  .canvas-size-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 7px;
+  }
   input[type=range] {
     -webkit-appearance: none;
     width: 100%;

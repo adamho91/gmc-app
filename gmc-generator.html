@@ -20,9 +20,15 @@
   <h1>gmc generator</h1>
 
   <div class="sec">Canvas</div>
-  <div class="ctrl">
-    <label for="canvasSize">Canvas Size <span id="v-canvas-size">1440</span>px</label>
-    <input type="number" id="canvasSize" min="256" max="4096" value="1440" step="2">
+  <div class="canvas-size-grid">
+    <div class="ctrl">
+      <label for="canvasWidth">Width <span id="v-canvas-width">1440</span>px</label>
+      <input type="number" id="canvasWidth" min="256" max="4096" value="1440" step="1">
+    </div>
+    <div class="ctrl">
+      <label for="canvasHeight">Height <span id="v-canvas-height">1440</span>px</label>
+      <input type="number" id="canvasHeight" min="256" max="4096" value="1440" step="1">
+    </div>
   </div>
 
   <div class="sec">Grid</div>

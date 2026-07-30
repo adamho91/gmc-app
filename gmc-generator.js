@@ -136,30 +136,63 @@ function lerpColor(ca, cb, t) {
 // ── Main Draw ─────────────────────────────────────────────────────────────────
 let currentSeed = Date.now() & 0xFFFFFF;
 let animTime = 0;
-const DEFAULT_CANVAS_SIZE = 1440;
-const CANVAS_SIZE_MIN = 256;
-const CANVAS_SIZE_MAX = 4096;
+const DEFAULT_CANVAS_WIDTH = 1440;
+const DEFAULT_CANVAS_HEIGHT = 1440;
+const CANVAS_DIM_MIN = 256;
+const CANVAS_DIM_MAX = 4096;
 
-function clampCanvasSize(value) {
+function clampCanvasDimension(value, fallback = DEFAULT_CANVAS_WIDTH) {
   const n = Math.round(Number(value));
-  if (!Number.isFinite(n)) return DEFAULT_CANVAS_SIZE;
-  return Math.max(CANVAS_SIZE_MIN, Math.min(CANVAS_SIZE_MAX, n));
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(CANVAS_DIM_MIN, Math.min(CANVAS_DIM_MAX, n));
 }
 
-function syncCanvasSizeLabel() {
-  const input = document.getElementById('canvasSize');
-  const label = document.getElementById('v-canvas-size');
-  if (!input || !label) return;
-  label.textContent = clampCanvasSize(input.value);
+function setCanvasDimensionLabel(id, value) {
+  const label = document.getElementById(id);
+  if (label) label.textContent = Math.round(value);
 }
 
-function setCanvasSizeFromGrid() {
+function setCanvasDimensionsFromGrid() {
   const cols = parseInt(document.getElementById('cols').value, 10);
   const cell = parseFloat(document.getElementById('cellSize').value);
-  const input = document.getElementById('canvasSize');
-  if (!input || !Number.isFinite(cols) || !Number.isFinite(cell)) return;
-  input.value = clampCanvasSize(cols * cell);
-  syncCanvasSizeLabel();
+  const widthInput = document.getElementById('canvasWidth');
+  const heightInput = document.getElementById('canvasHeight');
+  if (!widthInput || !heightInput || !Number.isFinite(cols) || !Number.isFinite(cell)) return;
+  const size = clampCanvasDimension(cols * cell);
+  widthInput.value = size;
+  heightInput.value = size;
+  setCanvasDimensionLabel('v-canvas-width', size);
+  setCanvasDimensionLabel('v-canvas-height', size);
+}
+
+function resolveCanvasMetrics(cols, cellSize, opts) {
+  const widthInput = document.getElementById('canvasWidth');
+  const heightInput = document.getElementById('canvasHeight');
+  let requestedW = clampCanvasDimension(widthInput?.value || (cols * cellSize), DEFAULT_CANVAS_WIDTH);
+  let requestedH = clampCanvasDimension(heightInput?.value || (cols * cellSize), DEFAULT_CANVAS_HEIGHT);
+  const exportPx = opts && Number(opts.exportPx);
+  if (Number.isFinite(exportPx) && exportPx > 0) {
+    requestedW = Math.max(1, Math.round(exportPx));
+    requestedH = Math.max(1, Math.round(exportPx));
+  }
+
+  const cell = Math.max(1, Math.round(requestedW / cols));
+  const W = cols * cell;
+  const rows = Math.max(1, Math.round(requestedH / cell));
+  const H = rows * cell;
+  setCanvasDimensionLabel('v-canvas-width', W);
+  setCanvasDimensionLabel('v-canvas-height', H);
+  return { W, H, CS: cell, ROWS: rows };
+}
+
+function normalizeCanvasDimensionInputs() {
+  const cols = parseInt(document.getElementById('cols').value, 10);
+  const cellSize = parseFloat(document.getElementById('cellSize').value);
+  const metrics = resolveCanvasMetrics(cols, cellSize);
+  const widthInput = document.getElementById('canvasWidth');
+  const heightInput = document.getElementById('canvasHeight');
+  if (widthInput) widthInput.value = metrics.W;
+  if (heightInput) heightInput.value = metrics.H;
 }
 
 function draw(newSeed, opts) {
@@ -168,13 +201,10 @@ function draw(newSeed, opts) {
 
   // Read all controls
   const COLS       = parseInt(document.getElementById('cols').value);
-  let CS           = parseFloat(document.getElementById('cellSize').value);
-  let canvasPx     = clampCanvasSize(document.getElementById('canvasSize')?.value || (COLS * CS));
-  const exportPx   = opts && Number(opts.exportPx);
-  if (Number.isFinite(exportPx) && exportPx > 0) {
-    canvasPx = Math.max(1, Math.round(exportPx));
-  }
-  const ROWS       = COLS;
+  const cellSizeControl = parseFloat(document.getElementById('cellSize').value);
+  const metrics    = resolveCanvasMetrics(COLS, cellSizeControl, opts);
+  const ROWS       = metrics.ROWS;
+  const CS         = metrics.CS;
   const bCount     = parseInt(document.getElementById('blobCount').value);
   const rMin       = parseFloat(document.getElementById('rMin').value);
   const rMax       = parseFloat(document.getElementById('rMax').value);
@@ -229,9 +259,8 @@ function draw(newSeed, opts) {
   const metaPulse    = parseFloat(document.getElementById('metaPulse').value);
   const metaFlow     = parseFloat(document.getElementById('metaFlow').value);
 
-  CS = canvasPx / COLS;
-  const W = canvasPx;
-  const H = canvasPx;
+  const W = metrics.W;
+  const H = metrics.H;
   canvas.width = W;
   canvas.height = H;
 
@@ -771,7 +800,7 @@ function draw(newSeed, opts) {
 
 // ── Wiring ────────────────────────────────────────────────────────────────────
 const SLIDERS = {
-  canvasSize:'v-canvas-size',
+  canvasWidth:'v-canvas-width', canvasHeight:'v-canvas-height',
   cols:'v-cols', cellSize:'v-cell', checkerVar:'v-checker-var', blobCount:'v-blobs',
   rMin:'v-rmin', rMax:'v-rmax', blobShape:'v-shape', softness:'v-soft',
   megaCount:'v-mega', megaScale:'v-megascale', megaLobes:'v-lobes', lobeScatter:'v-lscatter', megaShape:'v-megashape',
@@ -793,11 +822,18 @@ for (const [id, valId] of Object.entries(SLIDERS)) {
   if (!el || !vl) continue;
   el.addEventListener('input', () => {
     vl.textContent = parseFloat(el.value).toFixed(el.step && parseFloat(el.step) < 1 ? 2 : 0);
-    if (id === 'canvasSize') syncCanvasSizeLabel();
-    if (id === 'cellSize') setCanvasSizeFromGrid();
+    if (id === 'cellSize') setCanvasDimensionsFromGrid();
     draw();
   });
 }
+
+['canvasWidth','canvasHeight'].forEach(id => {
+  document.getElementById(id)?.addEventListener('change', () => {
+    normalizeCanvasDimensionInputs();
+    saveCurrentState();
+    draw();
+  });
+});
 
 ['checkerStyle','palette','patType','patColor','patBlend','warpType','metaMode','metaColor','metaStroke'].forEach(id => {
   document.getElementById(id).addEventListener('change', () => { saveCurrentState(); draw(); });
@@ -1029,10 +1065,19 @@ function applyState(state) {
       if (vl) vl.textContent = parseFloat(state[id]).toFixed(parseFloat(el.step) < 1 ? 2 : 0);
     }
   });
-  if (state.canvasSize === undefined && state.cols !== undefined && state.cellSize !== undefined) {
-    const input = document.getElementById('canvasSize');
-    if (input) input.value = clampCanvasSize(parseFloat(state.cols) * parseFloat(state.cellSize));
-    syncCanvasSizeLabel();
+  if (state.canvasWidth === undefined || state.canvasHeight === undefined) {
+    const legacySize = state.canvasSize !== undefined
+      ? state.canvasSize
+      : (state.cols !== undefined && state.cellSize !== undefined ? parseFloat(state.cols) * parseFloat(state.cellSize) : null);
+    if (legacySize !== null) {
+      const widthInput = document.getElementById('canvasWidth');
+      const heightInput = document.getElementById('canvasHeight');
+      const size = clampCanvasDimension(legacySize);
+      if (widthInput && state.canvasWidth === undefined) widthInput.value = size;
+      if (heightInput && state.canvasHeight === undefined) heightInput.value = size;
+      setCanvasDimensionLabel('v-canvas-width', widthInput?.value || size);
+      setCanvasDimensionLabel('v-canvas-height', heightInput?.value || size);
+    }
   }
   ALL_SELECT_IDS.forEach(id => {
     const el = document.getElementById(id);
