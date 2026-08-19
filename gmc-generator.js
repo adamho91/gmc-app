@@ -239,6 +239,7 @@ function draw(newSeed, opts) {
   const cVar       = parseFloat(document.getElementById('cVar').value);
   const palName    = document.getElementById('palette').value;
   const checkerStyle = document.getElementById('checkerStyle').value;
+  const checkerGrid  = document.getElementById('checkerGrid').checked;
   const checkerVar   = parseFloat(document.getElementById('checkerVar').value);
   const warpType     = document.getElementById('warpType').value;
   const warpStr      = parseFloat(document.getElementById('warpStr').value);
@@ -398,17 +399,19 @@ function draw(newSeed, opts) {
   ctx.fillRect(0, 0, W, H);
   svgEls.push(`<rect x="0" y="0" width="${W}" height="${H}" fill="${bgA}"/>`);
 
-  for (let row = 0; row < ROWS; row++) {
-    for (let col = 0; col < COLS; col++) {
-      const sc = cellScale[row * COLS + col];
-      const fill = (row+col)%2===0 ? bgA : bgB;
-      const nx = (col+0.5)/COLS, ny = (row+0.5)/ROWS;
-      const { px, py } = compWarp(nx, ny);
-      const cw = CS * sc, ch = CS * sc;
-      const x = px - cw/2, y = py - ch/2;
-      ctx.fillStyle = fill;
-      ctx.fillRect(x, y, cw, ch);
-      svgEls.push(`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${cw.toFixed(1)}" height="${ch.toFixed(1)}" fill="${fill}"/>`);
+  if (checkerGrid) {
+    for (let row = 0; row < ROWS; row++) {
+      for (let col = 0; col < COLS; col++) {
+        const sc = cellScale[row * COLS + col];
+        const fill = (row+col)%2===0 ? bgA : bgB;
+        const nx = (col+0.5)/COLS, ny = (row+0.5)/ROWS;
+        const { px, py } = compWarp(nx, ny);
+        const cw = CS * sc, ch = CS * sc;
+        const x = px - cw/2, y = py - ch/2;
+        ctx.fillStyle = fill;
+        ctx.fillRect(x, y, cw, ch);
+        svgEls.push(`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${cw.toFixed(1)}" height="${ch.toFixed(1)}" fill="${fill}"/>`);
+      }
     }
   }
 
@@ -899,7 +902,7 @@ document.getElementById('btn-svg-copy').addEventListener('click', () => {
 const ALL_SLIDER_IDS = Object.keys(SLIDERS);
 const META_STROKE_IDS = new Set(['ends', 'deep', 'mix_deep', 'family_random', 'all_swatches', 'black', 'legacy_mid']);
 const ALL_SELECT_IDS = ['checkerStyle','palette','patType','patColor','patBlend','warpType','metaMode','metaColor','metaStroke'];
-const ALL_CHECKBOX_IDS = ['canvasPrimitiveLock', 'dotOsc', 'warpOsc'];
+const ALL_CHECKBOX_IDS = ['canvasPrimitiveLock', 'checkerGrid', 'dotOsc', 'warpOsc'];
 const LS_STATE_KEY   = 'gmc_state';
 const LS_PRESETS_KEY = 'gmc_presets';
 const IDB_NAME = 'gmc-generator';
@@ -1058,6 +1061,12 @@ function readEmbedConfigFromUrl() {
   }
 }
 
+function syncCheckerGridUi() {
+  const on = document.getElementById('checkerGrid')?.checked !== false;
+  const variance = document.getElementById('checkerVar');
+  if (variance) variance.disabled = !on;
+}
+
 function captureState() {
   const state = { seed: currentSeed };
   ALL_SLIDER_IDS.forEach(id => { const el = document.getElementById(id); if (el) state[id] = el.value; });
@@ -1102,6 +1111,7 @@ function applyState(state) {
     const el = document.getElementById(id);
     if (el && state[id] !== undefined) el.checked = !!state[id];
   });
+  syncCheckerGridUi();
   if (state.seed !== undefined) currentSeed = state.seed;
   draw(currentSeed);
 }
@@ -1303,8 +1313,13 @@ ALL_SELECT_IDS.forEach(id => {
 });
 ALL_CHECKBOX_IDS.forEach(id => {
   const el = document.getElementById(id);
-  if (el) el.addEventListener('change', saveCurrentState);
+  if (!el) return;
+  el.addEventListener('change', () => {
+    if (id === 'checkerGrid') syncCheckerGridUi();
+    saveCurrentState();
+  });
 });
+syncCheckerGridUi();
 
 // ── Animation loop — drives subtle node-chain motion ───────────────────────────
 // Only redraws when chains are visible and at least one speed slider is > 0,
