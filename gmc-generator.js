@@ -849,6 +849,11 @@ for (const [id, valId] of Object.entries(SLIDERS)) {
 
 document.getElementById('dotOsc').addEventListener('change', () => { saveCurrentState(); draw(); });
 document.getElementById('warpOsc').addEventListener('change', () => { saveCurrentState(); draw(); });
+document.getElementById('checkerGrid')?.addEventListener('change', () => {
+  syncCheckerGridUi();
+  saveCurrentState();
+  draw();
+});
 document.getElementById('canvasPrimitiveLock').addEventListener('change', () => {
   normalizeCanvasDimensionInputs();
   saveCurrentState();
@@ -1313,11 +1318,8 @@ ALL_SELECT_IDS.forEach(id => {
 });
 ALL_CHECKBOX_IDS.forEach(id => {
   const el = document.getElementById(id);
-  if (!el) return;
-  el.addEventListener('change', () => {
-    if (id === 'checkerGrid') syncCheckerGridUi();
-    saveCurrentState();
-  });
+  if (!el || id === 'checkerGrid') return;
+  el.addEventListener('change', saveCurrentState);
 });
 syncCheckerGridUi();
 
