@@ -152,24 +152,44 @@ function setCanvasDimensionLabel(id, value) {
   if (label) label.textContent = Math.round(value);
 }
 
+const MAX_GRID_AXIS = 200;
+
+function readRowsControl(fallback) {
+  const rows = parseInt(document.getElementById('rows')?.value, 10);
+  if (Number.isFinite(rows)) return Math.max(1, Math.min(MAX_GRID_AXIS, rows));
+  return Math.max(1, Math.min(MAX_GRID_AXIS, fallback || 40));
+}
+
+function syncRowsControl(rows) {
+  const rowsEl = document.getElementById('rows');
+  const rowsLabel = document.getElementById('v-rows');
+  const clamped = Math.max(1, Math.min(MAX_GRID_AXIS, Math.round(rows)));
+  if (rowsEl) rowsEl.value = clamped;
+  if (rowsLabel) rowsLabel.textContent = clamped;
+  return clamped;
+}
+
 function setCanvasDimensionsFromGrid() {
   const cols = parseInt(document.getElementById('cols').value, 10);
+  const rows = readRowsControl(cols);
   const cell = parseFloat(document.getElementById('cellSize').value);
   const widthInput = document.getElementById('canvasWidth');
   const heightInput = document.getElementById('canvasHeight');
   if (!widthInput || !heightInput || !Number.isFinite(cols) || !Number.isFinite(cell)) return;
-  const size = clampCanvasDimension(cols * cell);
-  widthInput.value = size;
-  heightInput.value = size;
-  setCanvasDimensionLabel('v-canvas-width', size);
-  setCanvasDimensionLabel('v-canvas-height', size);
+  const width = clampCanvasDimension(cols * cell);
+  const height = clampCanvasDimension(rows * cell);
+  widthInput.value = width;
+  heightInput.value = height;
+  setCanvasDimensionLabel('v-canvas-width', width);
+  setCanvasDimensionLabel('v-canvas-height', height);
 }
 
 function resolveCanvasMetrics(cols, cellSize, opts) {
   const widthInput = document.getElementById('canvasWidth');
   const heightInput = document.getElementById('canvasHeight');
+  const rowsControl = readRowsControl(cols);
   let requestedW = clampCanvasDimension(widthInput?.value || (cols * cellSize), DEFAULT_CANVAS_WIDTH);
-  let requestedH = clampCanvasDimension(heightInput?.value || (cols * cellSize), DEFAULT_CANVAS_HEIGHT);
+  let requestedH = clampCanvasDimension(heightInput?.value || (rowsControl * cellSize), DEFAULT_CANVAS_HEIGHT);
   const exportPx = opts && Number(opts.exportPx);
   const exportMode = Number.isFinite(exportPx) && exportPx > 0;
   const primitiveLock = !exportMode && document.getElementById('canvasPrimitiveLock')?.checked !== false;
@@ -181,7 +201,11 @@ function resolveCanvasMetrics(cols, cellSize, opts) {
   const rawCell = requestedW / cols;
   const cell = primitiveLock ? Math.max(1, Math.round(rawCell)) : rawCell;
   const W = primitiveLock ? cols * cell : requestedW;
-  const rows = Math.max(1, Math.round(requestedH / cell));
+  let rows = primitiveLock
+    ? rowsControl
+    : Math.max(1, Math.round(requestedH / cell));
+  rows = Math.max(1, Math.min(MAX_GRID_AXIS, rows));
+  if (!primitiveLock) syncRowsControl(rows);
   const H = primitiveLock ? rows * cell : requestedH;
   setCanvasDimensionLabel('v-canvas-width', W);
   setCanvasDimensionLabel('v-canvas-height', H);
@@ -809,7 +833,7 @@ function draw(newSeed, opts) {
 // ── Wiring ────────────────────────────────────────────────────────────────────
 const SLIDERS = {
   canvasWidth:'v-canvas-width', canvasHeight:'v-canvas-height',
-  cols:'v-cols', cellSize:'v-cell', checkerVar:'v-checker-var', blobCount:'v-blobs',
+  cols:'v-cols', rows:'v-rows', cellSize:'v-cell', checkerVar:'v-checker-var', blobCount:'v-blobs',
   rMin:'v-rmin', rMax:'v-rmax', blobShape:'v-shape', softness:'v-soft',
   megaCount:'v-mega', megaScale:'v-megascale', megaLobes:'v-lobes', lobeScatter:'v-lscatter', megaShape:'v-megashape',
   dotMax:'v-dotmax', dotMin:'v-dotmin',
@@ -830,7 +854,7 @@ for (const [id, valId] of Object.entries(SLIDERS)) {
   if (!el || !vl) continue;
   el.addEventListener('input', () => {
     vl.textContent = parseFloat(el.value).toFixed(el.step && parseFloat(el.step) < 1 ? 2 : 0);
-    if (id === 'cellSize') setCanvasDimensionsFromGrid();
+    if (id === 'cellSize' || id === 'cols' || id === 'rows') setCanvasDimensionsFromGrid();
     draw();
   });
 }
@@ -1116,6 +1140,7 @@ function applyState(state) {
     const el = document.getElementById(id);
     if (el && state[id] !== undefined) el.checked = !!state[id];
   });
+  if (state.rows === undefined && state.cols !== undefined) syncRowsControl(state.cols);
   syncCheckerGridUi();
   if (state.seed !== undefined) currentSeed = state.seed;
   draw(currentSeed);
