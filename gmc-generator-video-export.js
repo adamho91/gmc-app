@@ -223,15 +223,18 @@
 
   let ffmpegLoader = null;
 
+  const FFMPEG_VENDOR = new URL('vendor/ffmpeg/index.js', document.baseURI).href.replace(/index\.js$/, '');
+
   async function loadFfmpeg(onStatus) {
     if (!ffmpegLoader) {
       ffmpegLoader = (async () => {
         onStatus?.('MP4 · loading transcoder…', 80);
-        const { FFmpeg } = await import('https://esm.sh/@ffmpeg/ffmpeg@0.12.10');
+        const { FFmpeg } = await import(`${FFMPEG_VENDOR}index.js`);
         const { toBlobURL } = await import('https://esm.sh/@ffmpeg/util@0.12.1');
         const ffmpeg = new FFmpeg();
         const baseURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm';
         await ffmpeg.load({
+          classWorkerURL: `${FFMPEG_VENDOR}worker.js`,
           coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
           wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
         });
