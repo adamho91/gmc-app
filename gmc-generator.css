@@ -407,6 +407,13 @@
     background: #5718C0;
     transition: width 0.12s ease;
   }
+  #canvas-action-controls #video-export-progress.is-encoding #video-export-progress-bar {
+    animation: video-export-progress-pulse 1.15s ease-in-out infinite;
+  }
+  @keyframes video-export-progress-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
+  }
   #canvas-action-controls #video-export-status {
     max-width: 168px;
     min-height: 0;

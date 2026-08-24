@@ -41,6 +41,82 @@
     if (progressBar) progressBar.style.width = `${clamped}%`;
   }
 
+  function setEncodingActive(active) {
+    if (progressWrap) progressWrap.classList.toggle('is-encoding', active);
+  }
+
+  function formatElapsed(ms) {
+    const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return minutes > 0 ? `${minutes}:${String(seconds).padStart(2, '0')}` : `${totalSeconds}s`;
+  }
+
+  function createFfmpegStageTracker({ onProgress, label, startPct, endPct, totalFrames, fps = 24 }) {
+    const startedAt = Date.now();
+    let lastFrame = 0;
+    let lastRatio = 0;
+    let tickTimer = null;
+
+    const pctFromRatio = (ratio) => startPct + Math.min(1, Math.max(0, ratio)) * (endPct - startPct);
+
+    const emit = () => {
+      const elapsed = formatElapsed(Date.now() - startedAt);
+      let detail = label;
+      if (totalFrames && lastFrame > 0) {
+        detail += ` · ${lastFrame}/${totalFrames} frames`;
+      } else if (lastRatio > 0) {
+        detail += ` · ${Math.round(lastRatio * 100)}%`;
+      }
+      detail += ` · ${elapsed} elapsed`;
+      const idleCreep = Math.min(0.12, (Date.now() - startedAt) / 180000);
+      const ratio = lastRatio > 0 ? lastRatio : idleCreep;
+      onProgress?.(detail, pctFromRatio(ratio));
+    };
+
+    const logHandler = ({ message }) => {
+      const frameMatch = message.match(/frame=\s*(\d+)/);
+      if (!frameMatch) return;
+      lastFrame = parseInt(frameMatch[1], 10);
+      if (totalFrames > 0) {
+        lastRatio = Math.max(lastRatio, lastFrame / totalFrames);
+        emit();
+      }
+    };
+
+    const progressHandler = ({ progress, time }) => {
+      if (progress > 0) {
+        lastRatio = Math.max(lastRatio, progress);
+        emit();
+        return;
+      }
+      if (time > 0 && totalFrames > 0 && fps > 0) {
+        const durationUs = (totalFrames / fps) * 1_000_000;
+        if (durationUs > 0) {
+          lastRatio = Math.max(lastRatio, time / durationUs);
+          emit();
+        }
+      }
+    };
+
+    return {
+      start(ffmpeg) {
+        ffmpeg.on('log', logHandler);
+        ffmpeg.on('progress', progressHandler);
+        tickTimer = setInterval(emit, 1000);
+        emit();
+      },
+      stop(ffmpeg) {
+        ffmpeg.off('log', logHandler);
+        ffmpeg.off('progress', progressHandler);
+        if (tickTimer) {
+          clearInterval(tickTimer);
+          tickTimer = null;
+        }
+      },
+    };
+  }
+
   function setStatus(message, progressPct) {
     status.textContent = message || '';
     if (progressPct != null) setProgress(progressPct);
@@ -321,9 +397,19 @@
     }
 
     onProgress('encoding H.264…', 78);
+    setEncodingActive(true);
     const logs = [];
     const logHandler = ({ message }) => logs.push(message);
+    const stageTracker = createFfmpegStageTracker({
+      onProgress,
+      label: 'encoding H.264',
+      startPct: 78,
+      endPct: 98,
+      totalFrames,
+    });
+
     ffmpeg.on('log', logHandler);
+    stageTracker.start(ffmpeg);
 
     const encodeArgs = [
       '-framerate', String(fps),
@@ -343,7 +429,9 @@
     try {
       exitCode = await ffmpeg.exec(encodeArgs);
     } finally {
+      stageTracker.stop(ffmpeg);
       ffmpeg.off('log', logHandler);
+      setEncodingActive(false);
       await cleanupFfmpegFiles(ffmpeg, frameNames);
     }
 
@@ -374,13 +462,17 @@
 
     const logs = [];
     const logHandler = ({ message }) => logs.push(message);
-    const progressHandler = ({ progress }) => {
-      const pct = 78 + Math.min(20, Math.max(0, progress) * 20);
-      onProgress?.(`converting WebM → MP4 (${Math.round(progress * 100)}%)…`, pct);
-    };
+    setEncodingActive(true);
+    const stageTracker = createFfmpegStageTracker({
+      onProgress,
+      label: 'converting WebM → MP4',
+      startPct: 78,
+      endPct: 98,
+      totalFrames: 0,
+    });
 
     ffmpeg.on('log', logHandler);
-    ffmpeg.on('progress', progressHandler);
+    stageTracker.start(ffmpeg);
     try {
       await ffmpeg.exec([
         '-i', 'input.webm',
@@ -390,8 +482,9 @@
         'output.mp4',
       ]);
     } finally {
+      stageTracker.stop(ffmpeg);
       ffmpeg.off('log', logHandler);
-      ffmpeg.off('progress', progressHandler);
+      setEncodingActive(false);
       await cleanupFfmpegFiles(ffmpeg, ['input.webm']);
     }
 
