@@ -1,4 +1,4 @@
-/** Deterministic MP4 / WebM export for the 2D generator. MP4 renders WebM first, then transcodes. */
+/** Deterministic MP4 / WebM export for the 2D generator. MP4 encodes JPEG frames via ffmpeg.wasm. */
 (function () {
   const mp4Button = document.getElementById('btn-mp4');
   const webmButton = document.getElementById('btn-webm');
@@ -244,61 +244,124 @@
     return ffmpegLoader;
   }
 
-  function h264LevelForSize(width, height) {
-    const macroblocks = Math.ceil(width / 16) * Math.ceil(height / 16);
-    if (macroblocks > 36_864) return '6.0';
-    if (macroblocks > 8_704) return '5.1';
-    return '4.0';
+  function canvasToJpegBlob(canvas, quality = 0.9) {
+    return new Promise((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error('Could not encode frame JPEG.'));
+      }, 'image/jpeg', quality);
+    });
   }
 
-  async function transcodeWebmToMp4(webmBlob, qualityKey, width, height, fps, onProgress) {
-    const ffmpeg = await loadFfmpeg((msg, pct) => onProgress?.(msg, pct));
-    const { fetchFile } = await import('https://esm.sh/@ffmpeg/util@0.12.1');
-    const crf = qualityKey === 'high' ? '18' : qualityKey === 'draft' ? '28' : '23';
-    const level = h264LevelForSize(width, height);
-
-    const handleProgress = ({ progress }) => {
-      const pct = 78 + Math.min(20, Math.max(0, progress) * 20);
-      onProgress?.(`MP4 · converting WebM → MP4 (${Math.round(progress * 100)}%)…`, pct);
-    };
-
-    ffmpeg.on('progress', handleProgress);
-    try {
-      await ffmpeg.writeFile('input.webm', await fetchFile(webmBlob));
-      const exitCode = await ffmpeg.exec([
-        '-i', 'input.webm',
-        '-c:v', 'libx264',
-        '-preset', 'medium',
-        '-crf', crf,
-        '-pix_fmt', 'yuv420p',
-        '-profile:v', 'high',
-        '-level', level,
-        '-tag:v', 'avc1',
-        '-colorspace', 'bt709',
-        '-color_primaries', 'bt709',
-        '-color_trc', 'bt709',
-        '-movflags', '+faststart',
-        '-r', String(fps),
-        '-vsync', 'cfr',
-        '-f', 'mp4',
-        'output.mp4',
-      ]);
-      if (exitCode !== 0) {
-        throw new Error('MP4 transcode failed. Try WebM or a smaller size.');
-      }
-    } finally {
-      ffmpeg.off('progress', handleProgress);
-    }
-    const data = await ffmpeg.readFile('output.mp4');
-    try {
-      await ffmpeg.deleteFile('input.webm');
-      await ffmpeg.deleteFile('output.mp4');
-    } catch (_) {
-      // Ignore cleanup errors between exports.
-    }
+  function readFfmpegBytes(data) {
     const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
     if (bytes.byteLength < 1024) {
-      throw new Error('MP4 transcode produced an empty file. Try WebM or a smaller size.');
+      throw new Error('MP4 encode produced an empty file. Try WebM or a smaller size.');
+    }
+    return bytes;
+  }
+
+  function looksLikeMp4(bytes) {
+    return bytes.byteLength >= 8
+      && bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70;
+  }
+
+  async function cleanupFfmpegFiles(ffmpeg, names) {
+    for (const name of names) {
+      try {
+        await ffmpeg.deleteFile(name);
+      } catch (_) {
+        // Ignore missing temp files.
+      }
+    }
+  }
+
+  async function encodeMp4FromFrames({
+    ffmpeg,
+    fetchFile,
+    width,
+    height,
+    fps,
+    qualityKey,
+    totalFrames,
+    duration,
+    encodeCanvas,
+    encodeCtx,
+    sourceCanvas,
+    drawOpts,
+    background,
+    onProgress,
+  }) {
+    const crf = qualityKey === 'high' ? '18' : qualityKey === 'draft' ? '28' : '23';
+    const pad = Math.max(4, String(totalFrames - 1).length);
+    const framePattern = `frame%0${pad}d.jpg`;
+    const frameNames = [];
+    const pixels = width * height;
+    const preset = pixels >= 3840 * 3840 ? 'ultrafast' : pixels >= 1920 * 1920 ? 'fast' : 'medium';
+    const jpegQuality = pixels >= 3840 * 3840 ? 0.88 : 0.9;
+
+    for (let index = 0; index < totalFrames; index += 1) {
+      animTime = (index / totalFrames) * duration;
+      draw(currentSeed, drawOpts);
+      encodeCtx.fillStyle = background;
+      encodeCtx.fillRect(0, 0, width, height);
+      encodeCtx.drawImage(sourceCanvas, 0, 0, width, height);
+
+      const frameName = `frame${String(index).padStart(pad, '0')}.jpg`;
+      frameNames.push(frameName);
+      await ffmpeg.writeFile(frameName, await fetchFile(await canvasToJpegBlob(encodeCanvas, jpegQuality)));
+
+      const framePct = 8 + ((index + 1) / totalFrames) * 67;
+      if (index % Math.max(1, Math.round(fps / 4)) === 0 || index === totalFrames - 1) {
+        const pct = Math.round(((index + 1) / totalFrames) * 100);
+        onProgress(`rendering ${index + 1} / ${totalFrames} (${pct}%) · ${width}×${height}`, framePct);
+        await nextPaint();
+      }
+    }
+
+    onProgress('encoding H.264…', 78);
+    const logs = [];
+    const logHandler = ({ message }) => logs.push(message);
+    ffmpeg.on('log', logHandler);
+
+    const encodeArgs = [
+      '-framerate', String(fps),
+      '-start_number', '0',
+      '-i', framePattern,
+      '-c:v', 'libx264',
+      '-preset', preset,
+      '-crf', crf,
+      '-pix_fmt', 'yuv420p',
+      '-profile:v', 'high',
+      '-movflags', '+faststart',
+      '-an',
+      'output.mp4',
+    ];
+
+    let exitCode = -1;
+    try {
+      exitCode = await ffmpeg.exec(encodeArgs);
+    } finally {
+      ffmpeg.off('log', logHandler);
+      await cleanupFfmpegFiles(ffmpeg, frameNames);
+    }
+
+    let bytes;
+    try {
+      bytes = readFfmpegBytes(await ffmpeg.readFile('output.mp4'));
+    } catch (error) {
+      const tail = logs.slice(-4).join(' · ');
+      throw new Error(tail || error?.message || 'MP4 encode failed. Try WebM or a smaller size.');
+    } finally {
+      await cleanupFfmpegFiles(ffmpeg, ['output.mp4']);
+    }
+
+    if (!looksLikeMp4(bytes)) {
+      const tail = logs.slice(-4).join(' · ');
+      throw new Error(tail || 'MP4 encode failed. Try WebM or a smaller size.');
+    }
+    if (exitCode !== 0) {
+      console.warn('ffmpeg exited with code', exitCode, logs.slice(-8).join('\n'));
     }
     return new Blob([bytes], { type: 'video/mp4' });
   }
@@ -345,8 +408,8 @@
     const { duration, fps, targetPx, quality, background } = readSettings();
     persistSettings();
 
-    if (typeof VideoEncoder === 'undefined' || typeof VideoFrame === 'undefined') {
-      throw new Error('Video export needs Chrome or Edge with WebCodecs enabled.');
+    if (format === 'webm' && (typeof VideoEncoder === 'undefined' || typeof VideoFrame === 'undefined')) {
+      throw new Error('WebM export needs Chrome or Edge with WebCodecs enabled.');
     }
 
     const sourceCanvas = document.getElementById('c');
@@ -365,12 +428,7 @@
     setProgress(1);
 
     try {
-      setStatus(
-        format === 'mp4'
-          ? mp4PhaseLabel('1/2', `WebM · preparing · ${sizeLabel}${drawOpts ? 'px' : ''}…`)
-          : `Preparing ${formatLabel} · ${sizeLabel}${drawOpts ? 'px' : ''}…`,
-        4
-      );
+      setStatus(`Preparing ${formatLabel} · ${sizeLabel}${drawOpts ? 'px' : ''}…`, 4);
       await nextPaint();
       await nextPaint();
       draw(currentSeed, drawOpts);
@@ -386,20 +444,38 @@
       const encodeCtx = encodeCanvas.getContext('2d', { alpha: false });
       if (!encodeCtx) throw new Error('Could not create export canvas.');
 
-      setStatus(
-        format === 'mp4'
-          ? mp4PhaseLabel('1/2', 'WebM · loading encoder…')
-          : `Loading ${formatLabel} encoder…`,
-        6
-      );
+      if (format === 'mp4') {
+        setStatus(mp4PhaseLabel('1/2', 'loading MP4 encoder…'), 6);
+        const { fetchFile } = await import('https://esm.sh/@ffmpeg/util@0.12.1');
+        const ffmpeg = await loadFfmpeg((msg, pct) => setStatus(mp4PhaseLabel('1/2', msg), pct));
+        setStatus(mp4PhaseLabel('1/2', `rendering 0 / ${totalFrames} · ${width}×${height}`), 8);
+        const downloadBlob = await encodeMp4FromFrames({
+          ffmpeg,
+          fetchFile,
+          width,
+          height,
+          fps,
+          qualityKey: quality,
+          totalFrames,
+          duration,
+          encodeCanvas,
+          encodeCtx,
+          sourceCanvas,
+          drawOpts,
+          background,
+          onProgress: (msg, pct) => setStatus(mp4PhaseLabel('1/2', msg), pct),
+        });
+        const filename = `gmc_2d_${currentSeed}_${duration}s_${fps}fps_${width}x${height}.mp4`;
+        download(downloadBlob, filename);
+        setStatus(`Saved MP4 · ${duration}s · ${fps} fps · ${width}×${height} · ${quality}`, 100);
+        resetProgressLater();
+        return;
+      }
+
+      setStatus(`Loading ${formatLabel} encoder…`, 6);
       const pipeline = await setupVideoPipeline(format, width, height, fps, quality);
       encoder = pipeline.encoder;
-      setStatus(
-        format === 'mp4'
-          ? mp4PhaseLabel('1/2', `WebM · rendering 0 / ${totalFrames} · ${width}×${height}`)
-          : `Rendering 0 / ${totalFrames} · ${width}×${height}`,
-        8
-      );
+      setStatus(`Rendering 0 / ${totalFrames} · ${width}×${height}`, 8);
 
       for (let index = 0; index < totalFrames; index += 1) {
         const pipelineError = pipeline.getError();
@@ -418,45 +494,21 @@
         encoder.encode(frame, { keyFrame: index % fps === 0 });
         frame.close();
 
-        const renderCap = format === 'mp4' ? 75 : 82;
-        const framePct = 8 + ((index + 1) / totalFrames) * (renderCap - 8);
+        const framePct = 8 + ((index + 1) / totalFrames) * 74;
         if (index % Math.max(1, Math.round(fps / 4)) === 0 || index === totalFrames - 1) {
           const pct = Math.round(((index + 1) / totalFrames) * 100);
-          setStatus(
-            format === 'mp4'
-              ? mp4PhaseLabel('1/2', `WebM · rendering ${index + 1} / ${totalFrames} (${pct}%) · ${width}×${height}`)
-              : `Rendering ${index + 1} / ${totalFrames} (${pct}%) · ${width}×${height}`,
-            framePct
-          );
+          setStatus(`Rendering ${index + 1} / ${totalFrames} (${pct}%) · ${width}×${height}`, framePct);
           await nextPaint();
         } else {
           setProgress(framePct);
         }
       }
 
-      setStatus(
-        format === 'mp4'
-          ? mp4PhaseLabel('1/2', 'WebM · finalizing…')
-          : `Finalizing ${formatLabel}…`,
-        format === 'mp4' ? 76 : 94
-      );
+      setStatus(`Finalizing ${formatLabel}…`, 94);
       const result = await pipeline.finish();
-      let downloadBlob = result.blob;
-      let downloadExt = result.ext;
-      let savedLabel = result.label;
-
-      if (format === 'mp4') {
-        setStatus(mp4PhaseLabel('2/2', 'MP4 · converting WebM → MP4…'), 78);
-        downloadBlob = await transcodeWebmToMp4(result.blob, quality, width, height, fps, (msg, pct) => {
-          setStatus(mp4PhaseLabel('2/2', msg), pct);
-        });
-        downloadExt = 'mp4';
-        savedLabel = 'MP4';
-      }
-
-      const filename = `gmc_2d_${currentSeed}_${duration}s_${fps}fps_${width}x${height}.${downloadExt}`;
-      download(downloadBlob, filename);
-      setStatus(`Saved ${savedLabel} · ${duration}s · ${fps} fps · ${width}×${height} · ${quality}`, 100);
+      const filename = `gmc_2d_${currentSeed}_${duration}s_${fps}fps_${width}x${height}.${result.ext}`;
+      download(result.blob, filename);
+      setStatus(`Saved ${result.label} · ${duration}s · ${fps} fps · ${width}×${height} · ${quality}`, 100);
       resetProgressLater();
     } finally {
       if (encoder && encoder.state !== 'closed') {
