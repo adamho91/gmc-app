@@ -63,7 +63,7 @@
 
   function readSettings() {
     const duration = Math.max(1, Math.min(30, Number(durationInput.value) || 3));
-    const fps = Math.max(12, Math.min(60, Math.round(Number(fpsInput.value) || 30)));
+    const fps = Math.max(12, Math.min(60, Math.round(Number(fpsInput.value) || 24)));
     const sizeMode = sizeSelect ? sizeSelect.value : '2000';
     let targetPx = 2000;
     if (sizeMode === 'live') targetPx = 0;
@@ -135,6 +135,8 @@
       const candidates = [
         { codec, width, height, bitrate, framerate: fps, bitrateMode: 'constant' },
         { codec, width, height, bitrate, framerate: fps },
+        { codec, width, height, bitrate, bitrateMode: 'constant' },
+        { codec, width, height, bitrate },
       ];
       for (const config of candidates) {
         try {
@@ -170,14 +172,18 @@
     setTimeout(() => URL.revokeObjectURL(url), 30_000);
   }
 
-  /** Pixel size for high-res MP4 frames (0 = live canvas). */
+  /** Pixel size for high-res MP4 frames (0 = live canvas). Cap keeps H.264 encodable. */
   function resolveExportPx(targetPx) {
-    const colsEl = document.getElementById('cols');
-    const cellEl = document.getElementById('cellSize');
-    const cols = Math.max(1, parseInt(colsEl?.value, 10) || 25);
-    const livePx = cols * (parseInt(cellEl?.value, 10) || 36);
-    if (!targetPx || targetPx <= 0) return livePx;
-    return Math.max(livePx, targetPx);
+    const MAX_EXPORT_PX = 4096;
+    if (targetPx > 0) return evenDimension(Math.min(MAX_EXPORT_PX, targetPx));
+    const sourceCanvas = document.getElementById('c');
+    const liveW = sourceCanvas?.width || 0;
+    const liveH = sourceCanvas?.height || 0;
+    const livePx = Math.max(liveW, liveH);
+    if (livePx > 0) return evenDimension(Math.min(MAX_EXPORT_PX, livePx));
+    const cols = Math.max(1, parseInt(document.getElementById('cols')?.value, 10) || 40);
+    const cell = parseInt(document.getElementById('cellSize')?.value, 10) || 36;
+    return evenDimension(Math.min(MAX_EXPORT_PX, cols * cell));
   }
 
   async function exportMp4() {
@@ -209,12 +215,16 @@
       await nextPaint();
       draw(currentSeed, drawOpts);
 
-      const width = evenDimension(sourceCanvas.width);
-      const height = evenDimension(sourceCanvas.height);
+      const srcW = Math.max(2, sourceCanvas.width);
+      const srcH = Math.max(2, sourceCanvas.height);
+      const scale = Math.min(1, 4096 / Math.max(srcW, srcH));
+      const width = evenDimension(srcW * scale);
+      const height = evenDimension(srcH * scale);
       const encodeCanvas = document.createElement('canvas');
       encodeCanvas.width = width;
       encodeCanvas.height = height;
       const encodeCtx = encodeCanvas.getContext('2d', { alpha: false });
+      if (!encodeCtx) throw new Error('Could not create export canvas.');
 
       let Muxer;
       let ArrayBufferTarget;

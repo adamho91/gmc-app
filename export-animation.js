@@ -99,7 +99,7 @@
 
   function readExportOptions() {
     const timingMode = $("export-timing-mode")?.value === "live" ? "live" : "manual";
-    const fps = Math.max(1, Math.min(60, parseInt($("export-fps")?.value, 10) || 30));
+    const fps = Math.max(1, Math.min(60, parseInt($("export-fps")?.value, 10) || 24));
     const rotations = Math.max(1, Math.min(8, parseInt($("export-rotations")?.value, 10) || 1));
     const speedPct = Math.max(50, Math.min(200, parseInt($("export-speed-pct")?.value, 10) || 100));
     const width = evenDim(Math.max(256, Math.min(4096, parseInt($("export-width")?.value, 10) || 1200)));

@@ -201,11 +201,16 @@ function resolveCanvasMetrics(cols, cellSize, opts) {
   const rawCell = requestedW / cols;
   const cell = primitiveLock ? Math.max(1, Math.round(rawCell)) : rawCell;
   const W = primitiveLock ? cols * cell : requestedW;
-  let rows = primitiveLock
-    ? rowsControl
-    : Math.max(1, Math.round(requestedH / cell));
-  rows = Math.max(1, Math.min(MAX_GRID_AXIS, rows));
-  if (!primitiveLock) syncRowsControl(rows);
+  let rows;
+  if (exportMode) {
+    /* Square export fills the frame from column density; never mutate UI sliders. */
+    rows = Math.max(1, Math.min(MAX_GRID_AXIS, Math.round(requestedH / cell)));
+  } else if (primitiveLock) {
+    rows = rowsControl;
+  } else {
+    rows = Math.max(1, Math.min(MAX_GRID_AXIS, Math.round(requestedH / cell)));
+    syncRowsControl(rows);
+  }
   const H = primitiveLock ? rows * cell : requestedH;
   setCanvasDimensionLabel('v-canvas-width', W);
   setCanvasDimensionLabel('v-canvas-height', H);
