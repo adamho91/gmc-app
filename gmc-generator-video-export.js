@@ -244,10 +244,18 @@
     return ffmpegLoader;
   }
 
-  async function transcodeWebmToMp4(webmBlob, qualityKey, onProgress) {
+  function h264LevelForSize(width, height) {
+    const macroblocks = Math.ceil(width / 16) * Math.ceil(height / 16);
+    if (macroblocks > 36_864) return '6.0';
+    if (macroblocks > 8_704) return '5.1';
+    return '4.0';
+  }
+
+  async function transcodeWebmToMp4(webmBlob, qualityKey, width, height, fps, onProgress) {
     const ffmpeg = await loadFfmpeg((msg, pct) => onProgress?.(msg, pct));
     const { fetchFile } = await import('https://esm.sh/@ffmpeg/util@0.12.1');
     const crf = qualityKey === 'high' ? '18' : qualityKey === 'draft' ? '28' : '23';
+    const level = h264LevelForSize(width, height);
 
     const handleProgress = ({ progress }) => {
       const pct = 78 + Math.min(20, Math.max(0, progress) * 20);
@@ -257,15 +265,27 @@
     ffmpeg.on('progress', handleProgress);
     try {
       await ffmpeg.writeFile('input.webm', await fetchFile(webmBlob));
-      await ffmpeg.exec([
+      const exitCode = await ffmpeg.exec([
         '-i', 'input.webm',
         '-c:v', 'libx264',
         '-preset', 'medium',
         '-crf', crf,
         '-pix_fmt', 'yuv420p',
+        '-profile:v', 'high',
+        '-level', level,
+        '-tag:v', 'avc1',
+        '-colorspace', 'bt709',
+        '-color_primaries', 'bt709',
+        '-color_trc', 'bt709',
         '-movflags', '+faststart',
+        '-r', String(fps),
+        '-vsync', 'cfr',
+        '-f', 'mp4',
         'output.mp4',
       ]);
+      if (exitCode !== 0) {
+        throw new Error('MP4 transcode failed. Try WebM or a smaller size.');
+      }
     } finally {
       ffmpeg.off('progress', handleProgress);
     }
@@ -276,7 +296,11 @@
     } catch (_) {
       // Ignore cleanup errors between exports.
     }
-    return new Blob([data.buffer], { type: 'video/mp4' });
+    const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+    if (bytes.byteLength < 1024) {
+      throw new Error('MP4 transcode produced an empty file. Try WebM or a smaller size.');
+    }
+    return new Blob([bytes], { type: 'video/mp4' });
   }
 
   function download(blob, filename) {
@@ -423,7 +447,7 @@
 
       if (format === 'mp4') {
         setStatus(mp4PhaseLabel('2/2', 'MP4 · converting WebM → MP4…'), 78);
-        downloadBlob = await transcodeWebmToMp4(result.blob, quality, (msg, pct) => {
+        downloadBlob = await transcodeWebmToMp4(result.blob, quality, width, height, fps, (msg, pct) => {
           setStatus(mp4PhaseLabel('2/2', msg), pct);
         });
         downloadExt = 'mp4';
