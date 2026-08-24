@@ -226,7 +226,7 @@
   async function loadFfmpeg(onStatus) {
     if (!ffmpegLoader) {
       ffmpegLoader = (async () => {
-        onStatus?.('Loading MP4 transcoder…', 86);
+        onStatus?.('MP4 · loading transcoder…', 80);
         const { FFmpeg } = await import('https://esm.sh/@ffmpeg/ffmpeg@0.12.10');
         const { toBlobURL } = await import('https://esm.sh/@ffmpeg/util@0.12.1');
         const ffmpeg = new FFmpeg();
@@ -247,8 +247,8 @@
     const crf = qualityKey === 'high' ? '18' : qualityKey === 'draft' ? '28' : '23';
 
     const handleProgress = ({ progress }) => {
-      const pct = 88 + Math.min(10, Math.max(0, progress) * 10);
-      onProgress?.(`Converting WebM → MP4 (${Math.round(progress * 100)}%)…`, pct);
+      const pct = 78 + Math.min(20, Math.max(0, progress) * 20);
+      onProgress?.(`MP4 · converting WebM → MP4 (${Math.round(progress * 100)}%)…`, pct);
     };
 
     ffmpeg.on('progress', handleProgress);
@@ -310,6 +310,10 @@
     return evenDimension(Math.min(MAX_EXPORT_PX, cols * cell));
   }
 
+  function mp4PhaseLabel(phase, detail) {
+    return `Step ${phase} · ${detail}`;
+  }
+
   async function exportVideo(format) {
     const { duration, fps, targetPx, quality, background } = readSettings();
     persistSettings();
@@ -334,7 +338,12 @@
     setProgress(1);
 
     try {
-      setStatus(`Preparing ${formatLabel} · ${sizeLabel}${drawOpts ? 'px' : ''}…`, 4);
+      setStatus(
+        format === 'mp4'
+          ? mp4PhaseLabel('1/2', `WebM · preparing · ${sizeLabel}${drawOpts ? 'px' : ''}…`)
+          : `Preparing ${formatLabel} · ${sizeLabel}${drawOpts ? 'px' : ''}…`,
+        4
+      );
       await nextPaint();
       await nextPaint();
       draw(currentSeed, drawOpts);
@@ -350,10 +359,20 @@
       const encodeCtx = encodeCanvas.getContext('2d', { alpha: false });
       if (!encodeCtx) throw new Error('Could not create export canvas.');
 
-      setStatus(`Loading ${format === 'mp4' ? 'WebM' : formatLabel} encoder…`, 6);
+      setStatus(
+        format === 'mp4'
+          ? mp4PhaseLabel('1/2', 'WebM · loading encoder…')
+          : `Loading ${formatLabel} encoder…`,
+        6
+      );
       const pipeline = await setupVideoPipeline(format, width, height, fps, quality);
       encoder = pipeline.encoder;
-      setStatus(`Rendering 0 / ${totalFrames} · ${width}×${height}`, 8);
+      setStatus(
+        format === 'mp4'
+          ? mp4PhaseLabel('1/2', `WebM · rendering 0 / ${totalFrames} · ${width}×${height}`)
+          : `Rendering 0 / ${totalFrames} · ${width}×${height}`,
+        8
+      );
 
       for (let index = 0; index < totalFrames; index += 1) {
         const pipelineError = pipeline.getError();
@@ -372,26 +391,38 @@
         encoder.encode(frame, { keyFrame: index % fps === 0 });
         frame.close();
 
-        const renderCap = format === 'mp4' ? 80 : 82;
+        const renderCap = format === 'mp4' ? 75 : 82;
         const framePct = 8 + ((index + 1) / totalFrames) * (renderCap - 8);
         if (index % Math.max(1, Math.round(fps / 4)) === 0 || index === totalFrames - 1) {
           const pct = Math.round(((index + 1) / totalFrames) * 100);
-          setStatus(`Rendering ${index + 1} / ${totalFrames} (${pct}%) · ${width}×${height}`, framePct);
+          setStatus(
+            format === 'mp4'
+              ? mp4PhaseLabel('1/2', `WebM · rendering ${index + 1} / ${totalFrames} (${pct}%) · ${width}×${height}`)
+              : `Rendering ${index + 1} / ${totalFrames} (${pct}%) · ${width}×${height}`,
+            framePct
+          );
           await nextPaint();
         } else {
           setProgress(framePct);
         }
       }
 
-      setStatus(`Finalizing ${format === 'mp4' ? 'WebM' : formatLabel}…`, format === 'mp4' ? 82 : 94);
+      setStatus(
+        format === 'mp4'
+          ? mp4PhaseLabel('1/2', 'WebM · finalizing…')
+          : `Finalizing ${formatLabel}…`,
+        format === 'mp4' ? 76 : 94
+      );
       const result = await pipeline.finish();
       let downloadBlob = result.blob;
       let downloadExt = result.ext;
       let savedLabel = result.label;
 
       if (format === 'mp4') {
-        setStatus('Converting WebM → MP4…', 86);
-        downloadBlob = await transcodeWebmToMp4(result.blob, quality, (msg, pct) => setStatus(msg, pct));
+        setStatus(mp4PhaseLabel('2/2', 'MP4 · converting WebM → MP4…'), 78);
+        downloadBlob = await transcodeWebmToMp4(result.blob, quality, (msg, pct) => {
+          setStatus(mp4PhaseLabel('2/2', msg), pct);
+        });
         downloadExt = 'mp4';
         savedLabel = 'MP4';
       }
