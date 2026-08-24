@@ -380,6 +380,24 @@
   #canvas-action-controls .video-export-options select {
     cursor: pointer;
   }
+  #canvas-action-controls #video-export-progress {
+    width: 100%;
+    max-width: 168px;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(0, 0, 0, 0.08);
+    overflow: hidden;
+    margin-top: 2px;
+  }
+  #canvas-action-controls #video-export-progress[hidden] {
+    display: none !important;
+  }
+  #canvas-action-controls #video-export-progress-bar {
+    height: 100%;
+    width: 0%;
+    background: #5718C0;
+    transition: width 0.12s ease;
+  }
   #canvas-action-controls #video-export-status {
     max-width: 168px;
     min-height: 0;

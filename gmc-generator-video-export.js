@@ -9,6 +9,8 @@
   const qualitySelect = document.getElementById('video-quality');
   const bgSelect = document.getElementById('video-bg');
   const status = document.getElementById('video-export-status');
+  const progressWrap = document.getElementById('video-export-progress');
+  const progressBar = document.getElementById('video-export-progress-bar');
   if (!button || !durationInput || !fpsInput || !status) return;
 
   const STORAGE_KEY = 'gmc-2d-video-export';
@@ -27,8 +29,22 @@
     bgSelect,
   ].filter(Boolean);
 
-  function setStatus(message) {
+  function setProgress(pct) {
+    const clamped = Math.min(100, Math.max(0, pct));
+    if (progressWrap) {
+      progressWrap.hidden = clamped <= 0;
+      progressWrap.setAttribute('aria-valuenow', String(Math.round(clamped)));
+    }
+    if (progressBar) progressBar.style.width = `${clamped}%`;
+  }
+
+  function setStatus(message, progressPct) {
     status.textContent = message || '';
+    if (progressPct != null) setProgress(progressPct);
+  }
+
+  function resetProgressLater() {
+    setTimeout(() => setProgress(0), 2000);
   }
 
   function setBusy(busy) {
@@ -118,38 +134,169 @@
     syncCustomVisibility();
   }
 
-  async function configureEncoder(encoder, width, height, fps, qualityKey) {
+  function videoBitrate(width, height, fps, qualityKey, scale = 1) {
     const q = QUALITY[qualityKey] || QUALITY.standard;
     const pixels = width * height;
-    const bitrate = Math.max(
-      q.min,
-      Math.round(pixels * fps * q.coeff),
-      pixels >= 3840 * 3840 ? 40_000_000 : 0
-    );
-    /* Prefer High@5.1 / 5.2 for 4K; fall back to lower levels. */
-    const codecs =
-      pixels >= 1920 * 1920
+    const raw = Math.round(pixels * fps * q.coeff * scale);
+    const floor = pixels >= 3840 * 3840 ? 12_000_000 : q.min;
+    const cap = pixels >= 3840 * 3840 ? 80_000_000 : 50_000_000;
+    return Math.max(floor, Math.min(cap, raw));
+  }
+
+  async function configureEncoder(encoder, width, height, fps, qualityKey) {
+    const pixels = width * height;
+    const is4K = pixels >= 3840 * 3840;
+    const isLarge = pixels >= 1920 * 1920;
+    /* 3840² needs H.264 Level 6.0+ (57600 macroblocks/frame > Level 5.2 limit). */
+    const codecs = is4K
+      ? ['avc1.64003C', 'avc1.64003E', 'avc1.640034', 'avc1.640033', 'avc1.640028', 'avc1.42001f']
+      : isLarge
         ? ['avc1.640034', 'avc1.640033', 'avc1.640028', 'avc1.4d0034', 'avc1.42001f']
         : ['avc1.640028', 'avc1.4d0034', 'avc1.42001f'];
-    for (const codec of codecs) {
-      const candidates = [
-        { codec, width, height, bitrate, framerate: fps, bitrateMode: 'constant' },
-        { codec, width, height, bitrate, framerate: fps },
-        { codec, width, height, bitrate, bitrateMode: 'constant' },
-        { codec, width, height, bitrate },
-      ];
-      for (const config of candidates) {
-        try {
-          const support = await VideoEncoder.isConfigSupported(config);
-          if (!support.supported) continue;
-          encoder.configure(config);
-          if (encoder.state === 'configured') return codec;
-        } catch (_) {
-          // Try the next H.264 profile/configuration.
+
+    for (const bitrateScale of [1, 0.75, 0.5, 0.35]) {
+      const bitrate = videoBitrate(width, height, fps, qualityKey, bitrateScale);
+      for (const codec of codecs) {
+        const candidates = [
+          { codec, width, height, bitrate, framerate: fps, bitrateMode: 'constant', hardwareAcceleration: 'prefer-hardware' },
+          { codec, width, height, bitrate, framerate: fps, hardwareAcceleration: 'prefer-hardware' },
+          { codec, width, height, bitrate, framerate: fps, bitrateMode: 'constant' },
+          { codec, width, height, bitrate, framerate: fps },
+          { codec, width, height, bitrate, bitrateMode: 'constant' },
+          { codec, width, height, bitrate },
+        ];
+        for (const config of candidates) {
+          try {
+            const support = await VideoEncoder.isConfigSupported(config);
+            if (!support.supported) continue;
+            encoder.configure(support.config || config);
+            if (encoder.state === 'configured') return codec;
+          } catch (_) {
+            // Try the next H.264 profile/configuration.
+          }
         }
       }
     }
     return null;
+  }
+
+  async function setupWebmPipeline(width, height, fps, qualityKey) {
+    const { Muxer, ArrayBufferTarget } = await import('https://esm.sh/webm-muxer@4.0.1');
+    const profiles = [
+      { muxCodec: 'V_VP9', codec: 'vp09.00.10.08' },
+      { muxCodec: 'V_VP8', codec: 'vp8' },
+    ];
+
+    for (const profile of profiles) {
+      const target = new ArrayBufferTarget();
+      const muxer = new Muxer({
+        target,
+        video: { codec: profile.muxCodec, width, height, frameRate: fps },
+      });
+      let encoderError = null;
+      const encoder = new VideoEncoder({
+        output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+        error: (error) => {
+          encoderError = error;
+        },
+      });
+
+      for (const bitrateScale of [1, 0.75, 0.5]) {
+        const bitrate = videoBitrate(width, height, fps, qualityKey, bitrateScale);
+        const candidates = [
+          { codec: profile.codec, width, height, bitrate, framerate: fps, bitrateMode: 'constant' },
+          { codec: profile.codec, width, height, bitrate, framerate: fps },
+          { codec: profile.codec, width, height, bitrate, bitrateMode: 'constant' },
+          { codec: profile.codec, width, height, bitrate },
+        ];
+        for (const config of candidates) {
+          try {
+            const support = await VideoEncoder.isConfigSupported(config);
+            if (!support.supported) continue;
+            encoder.configure(support.config || config);
+            if (encoder.state === 'configured') {
+              return {
+                encoder,
+                usedFallback: true,
+                getError: () => encoderError,
+                finish: async () => {
+                  if (encoderError) throw encoderError;
+                  await encoder.flush();
+                  muxer.finalize();
+                  return {
+                    blob: new Blob([target.buffer], { type: 'video/webm' }),
+                    ext: 'webm',
+                    label: profile.muxCodec === 'V_VP9' ? 'WebM · VP9' : 'WebM · VP8',
+                  };
+                },
+              };
+            }
+          } catch (_) {
+            // Try next WebM profile/config.
+          }
+        }
+      }
+
+      try {
+        encoder.close();
+      } catch (_) {
+        // Ignore closed encoder.
+      }
+    }
+    return null;
+  }
+
+  async function setupVideoPipeline(width, height, fps, qualityKey) {
+    let Muxer;
+    let ArrayBufferTarget;
+    try {
+      ({ Muxer, ArrayBufferTarget } = await import('https://esm.sh/mp4-muxer@5.1.3'));
+    } catch (_) {
+      throw new Error('Could not load MP4 encoder (blocked network?). Try Chrome/Edge again.');
+    }
+
+    const target = new ArrayBufferTarget();
+    const muxer = new Muxer({
+      target,
+      video: { codec: 'avc', width, height },
+      fastStart: 'in-memory',
+    });
+    let encoderError = null;
+    const encoder = new VideoEncoder({
+      output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+      error: (error) => {
+        encoderError = error;
+      },
+    });
+
+    const codec = await configureEncoder(encoder, width, height, fps, qualityKey);
+    if (codec) {
+      return {
+        encoder,
+        usedFallback: false,
+        getError: () => encoderError,
+        finish: async () => {
+          if (encoderError) throw encoderError;
+          await encoder.flush();
+          muxer.finalize();
+          return {
+            blob: new Blob([target.buffer], { type: 'video/mp4' }),
+            ext: 'mp4',
+            label: 'MP4',
+          };
+        },
+      };
+    }
+
+    try {
+      encoder.close();
+    } catch (_) {
+      // Ignore closed encoder.
+    }
+
+    const webm = await setupWebmPipeline(width, height, fps, qualityKey);
+    if (webm) return webm;
+    throw new Error('This browser cannot encode video at the selected size. Try 2000² or Chrome/Edge.');
   }
 
   function download(blob, filename) {
@@ -202,14 +349,14 @@
     const sizeLabel = drawOpts?.exportPx || 'live';
     const totalFrames = Math.max(1, Math.round(duration * fps));
     const frameDurationUs = Math.round(1_000_000 / fps);
-    let encoderError = null;
     let encoder = null;
 
     window.GMCGeneratorExporting = true;
     setBusy(true);
+    setProgress(1);
 
     try {
-      setStatus(`Preparing encoder · ${sizeLabel}${drawOpts ? 'px' : ''}…`);
+      setStatus(`Preparing encoder · ${sizeLabel}${drawOpts ? 'px' : ''}…`, 4);
       /* Let the button/status paint before the first heavy frame. */
       await nextPaint();
       await nextPaint();
@@ -226,32 +373,18 @@
       const encodeCtx = encodeCanvas.getContext('2d', { alpha: false });
       if (!encodeCtx) throw new Error('Could not create export canvas.');
 
-      let Muxer;
-      let ArrayBufferTarget;
-      try {
-        ({ Muxer, ArrayBufferTarget } = await import('https://esm.sh/mp4-muxer@5.1.3'));
-      } catch (err) {
-        throw new Error('Could not load MP4 encoder (blocked network?). Try Chrome/Edge again.');
+      setStatus('Loading encoder…', 6);
+      const pipeline = await setupVideoPipeline(width, height, fps, quality);
+      encoder = pipeline.encoder;
+      if (pipeline.usedFallback) {
+        setStatus(`H.264 unavailable at ${width}×${height} — using WebM…`, 7);
+        await nextPaint();
       }
-      const target = new ArrayBufferTarget();
-      const muxer = new Muxer({
-        target,
-        video: { codec: 'avc', width, height },
-        fastStart: 'in-memory',
-      });
-
-      encoder = new VideoEncoder({
-        output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
-        error: (error) => {
-          encoderError = error;
-        },
-      });
-
-      const codec = await configureEncoder(encoder, width, height, fps, quality);
-      if (!codec) throw new Error('This browser cannot encode H.264 MP4 at the selected size.');
+      setStatus(`Rendering 0 / ${totalFrames} · ${width}×${height}`, 8);
 
       for (let index = 0; index < totalFrames; index += 1) {
-        if (encoderError) throw encoderError;
+        const pipelineError = pipeline.getError();
+        if (pipelineError) throw pipelineError;
         animTime = (index / totalFrames) * duration;
         draw(currentSeed, drawOpts);
         encodeCtx.fillStyle = background;
@@ -266,20 +399,23 @@
         encoder.encode(frame, { keyFrame: index % fps === 0 });
         frame.close();
 
+        const framePct = 8 + ((index + 1) / totalFrames) * 82;
         if (index % Math.max(1, Math.round(fps / 4)) === 0 || index === totalFrames - 1) {
-          setStatus(`Rendering ${index + 1} / ${totalFrames} · ${width}×${height}`);
+          const pct = Math.round(((index + 1) / totalFrames) * 100);
+          setStatus(`Rendering ${index + 1} / ${totalFrames} (${pct}%) · ${width}×${height}`, framePct);
           await nextPaint();
+        } else {
+          setProgress(framePct);
         }
       }
 
-      if (encoderError) throw encoderError;
-      setStatus('Finalizing MP4…');
-      await encoder.flush();
-      muxer.finalize();
-
-      const filename = `gmc_2d_${currentSeed}_${duration}s_${fps}fps_${width}x${height}.mp4`;
-      download(new Blob([target.buffer], { type: 'video/mp4' }), filename);
-      setStatus(`Saved · ${duration}s · ${fps} fps · ${width}×${height} · ${quality}`);
+      setStatus('Finalizing video…', 94);
+      const result = await pipeline.finish();
+      const filename = `gmc_2d_${currentSeed}_${duration}s_${fps}fps_${width}x${height}.${result.ext}`;
+      download(result.blob, filename);
+      const savedAs = result.label === 'MP4' ? 'MP4' : `${result.label} (H.264 unavailable at this size)`;
+      setStatus(`Saved ${savedAs} · ${duration}s · ${fps} fps · ${width}×${height} · ${quality}`, 100);
+      resetProgressLater();
     } finally {
       if (encoder && encoder.state !== 'closed') {
         try {
@@ -307,7 +443,7 @@
   button.addEventListener('click', () => {
     exportMp4().catch((error) => {
       console.warn(error);
-      setStatus(error?.message || 'MP4 export failed.');
+      setStatus(error?.message || 'MP4 export failed.', 0);
     });
   });
 })();

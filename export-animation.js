@@ -813,21 +813,26 @@
 
   async function configureAvcEncoder(encoder, width, height, fps, bitrate) {
     const pixels = width * height;
-    const codecs =
-      pixels >= 1920 * 1920
+    const is4K = pixels >= 3840 * 3840;
+    const codecs = is4K
+      ? ["avc1.64003C", "avc1.64003E", "avc1.640034", "avc1.640033", "avc1.640028", "avc1.42001f"]
+      : pixels >= 1920 * 1920
         ? ["avc1.640034", "avc1.640033", "avc1.640028", "avc1.4d0034", "avc1.42001f"]
         : ["avc1.640028", "avc1.4d0034", "avc1.42001f"];
     for (const codec of codecs) {
       const configs = [
+        { codec, width, height, bitrate, framerate: fps, bitrateMode: "constant", hardwareAcceleration: "prefer-hardware" },
+        { codec, width, height, bitrate, framerate: fps, hardwareAcceleration: "prefer-hardware" },
         { codec, width, height, bitrate, framerate: fps, bitrateMode: "constant" },
         { codec, width, height, bitrate, framerate: fps },
         { codec, width, height, bitrate, bitrateMode: "constant" },
+        { codec, width, height, bitrate },
       ];
       for (const config of configs) {
         try {
           const support = await VideoEncoder.isConfigSupported(config);
           if (!support.supported) continue;
-          encoder.configure(config);
+          encoder.configure(support.config || config);
           if (encoder.state === "configured") return codec;
         } catch (_) {
           /* try next */
