@@ -1,6 +1,7 @@
-/** Deterministic MP4 export for the 2D generator. Requires WebCodecs (Chrome/Edge). */
+/** Deterministic MP4 / WebM export for the 2D generator. Requires WebCodecs (Chrome/Edge). */
 (function () {
-  const button = document.getElementById('btn-mp4');
+  const mp4Button = document.getElementById('btn-mp4');
+  const webmButton = document.getElementById('btn-webm');
   const durationInput = document.getElementById('video-duration');
   const fpsInput = document.getElementById('video-fps');
   const sizeSelect = document.getElementById('video-size');
@@ -11,7 +12,7 @@
   const status = document.getElementById('video-export-status');
   const progressWrap = document.getElementById('video-export-progress');
   const progressBar = document.getElementById('video-export-progress-bar');
-  if (!button || !durationInput || !fpsInput || !status) return;
+  if (!mp4Button || !webmButton || !durationInput || !fpsInput || !status) return;
 
   const STORAGE_KEY = 'gmc-2d-video-export';
   const QUALITY = {
@@ -20,6 +21,7 @@
     high: { coeff: 0.28, min: 16_000_000 },
   };
 
+  const exportButtons = [mp4Button, webmButton];
   const settingEls = [
     durationInput,
     fpsInput,
@@ -47,12 +49,15 @@
     setTimeout(() => setProgress(0), 2000);
   }
 
-  function setBusy(busy) {
-    button.disabled = busy;
+  function setBusy(busy, activeFormat) {
+    exportButtons.forEach((btn) => {
+      btn.disabled = busy;
+    });
     settingEls.forEach((el) => {
       el.disabled = busy;
     });
-    button.textContent = busy ? 'Exporting…' : 'Export MP4';
+    mp4Button.textContent = busy && activeFormat === 'mp4' ? 'Exporting…' : 'MP4';
+    webmButton.textContent = busy && activeFormat === 'webm' ? 'Exporting…' : 'WebM';
   }
 
   function evenDimension(value) {
@@ -180,6 +185,55 @@
     return null;
   }
 
+  async function setupMp4Pipeline(width, height, fps, qualityKey) {
+    let Muxer;
+    let ArrayBufferTarget;
+    try {
+      ({ Muxer, ArrayBufferTarget } = await import('https://esm.sh/mp4-muxer@5.1.3'));
+    } catch (_) {
+      throw new Error('Could not load MP4 encoder (blocked network?). Try Chrome/Edge again.');
+    }
+
+    const target = new ArrayBufferTarget();
+    const muxer = new Muxer({
+      target,
+      video: { codec: 'avc', width, height },
+      fastStart: 'in-memory',
+    });
+    let encoderError = null;
+    const encoder = new VideoEncoder({
+      output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+      error: (error) => {
+        encoderError = error;
+      },
+    });
+
+    const codec = await configureEncoder(encoder, width, height, fps, qualityKey);
+    if (!codec) {
+      try {
+        encoder.close();
+      } catch (_) {
+        // Ignore closed encoder.
+      }
+      return null;
+    }
+
+    return {
+      encoder,
+      getError: () => encoderError,
+      finish: async () => {
+        if (encoderError) throw encoderError;
+        await encoder.flush();
+        muxer.finalize();
+        return {
+          blob: new Blob([target.buffer], { type: 'video/mp4' }),
+          ext: 'mp4',
+          label: 'MP4',
+        };
+      },
+    };
+  }
+
   async function setupWebmPipeline(width, height, fps, qualityKey) {
     const { Muxer, ArrayBufferTarget } = await import('https://esm.sh/webm-muxer@4.0.1');
     const profiles = [
@@ -217,7 +271,6 @@
             if (encoder.state === 'configured') {
               return {
                 encoder,
-                usedFallback: true,
                 getError: () => encoderError,
                 finish: async () => {
                   if (encoderError) throw encoderError;
@@ -246,57 +299,20 @@
     return null;
   }
 
-  async function setupVideoPipeline(width, height, fps, qualityKey) {
-    let Muxer;
-    let ArrayBufferTarget;
-    try {
-      ({ Muxer, ArrayBufferTarget } = await import('https://esm.sh/mp4-muxer@5.1.3'));
-    } catch (_) {
-      throw new Error('Could not load MP4 encoder (blocked network?). Try Chrome/Edge again.');
+  async function setupVideoPipeline(format, width, height, fps, qualityKey) {
+    if (format === 'webm') {
+      const pipeline = await setupWebmPipeline(width, height, fps, qualityKey);
+      if (!pipeline) {
+        throw new Error('This browser cannot encode WebM at the selected size. Try Chrome/Edge.');
+      }
+      return pipeline;
     }
 
-    const target = new ArrayBufferTarget();
-    const muxer = new Muxer({
-      target,
-      video: { codec: 'avc', width, height },
-      fastStart: 'in-memory',
-    });
-    let encoderError = null;
-    const encoder = new VideoEncoder({
-      output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
-      error: (error) => {
-        encoderError = error;
-      },
-    });
-
-    const codec = await configureEncoder(encoder, width, height, fps, qualityKey);
-    if (codec) {
-      return {
-        encoder,
-        usedFallback: false,
-        getError: () => encoderError,
-        finish: async () => {
-          if (encoderError) throw encoderError;
-          await encoder.flush();
-          muxer.finalize();
-          return {
-            blob: new Blob([target.buffer], { type: 'video/mp4' }),
-            ext: 'mp4',
-            label: 'MP4',
-          };
-        },
-      };
+    const pipeline = await setupMp4Pipeline(width, height, fps, qualityKey);
+    if (!pipeline) {
+      throw new Error('This browser cannot encode H.264 MP4 at the selected size. Try WebM or a smaller size.');
     }
-
-    try {
-      encoder.close();
-    } catch (_) {
-      // Ignore closed encoder.
-    }
-
-    const webm = await setupWebmPipeline(width, height, fps, qualityKey);
-    if (webm) return webm;
-    throw new Error('This browser cannot encode video at the selected size. Try 2000² or Chrome/Edge.');
+    return pipeline;
   }
 
   function download(blob, filename) {
@@ -319,7 +335,7 @@
     setTimeout(() => URL.revokeObjectURL(url), 30_000);
   }
 
-  /** Pixel size for high-res MP4 frames (0 = live canvas). Cap keeps H.264 encodable. */
+  /** Pixel size for high-res video frames (0 = live canvas). Cap keeps encoders stable. */
   function resolveExportPx(targetPx) {
     const MAX_EXPORT_PX = 4096;
     if (targetPx > 0) return evenDimension(Math.min(MAX_EXPORT_PX, targetPx));
@@ -333,12 +349,12 @@
     return evenDimension(Math.min(MAX_EXPORT_PX, cols * cell));
   }
 
-  async function exportMp4() {
+  async function exportVideo(format) {
     const { duration, fps, targetPx, quality, background } = readSettings();
     persistSettings();
 
     if (typeof VideoEncoder === 'undefined' || typeof VideoFrame === 'undefined') {
-      throw new Error('MP4 export needs Chrome or Edge with WebCodecs enabled.');
+      throw new Error('Video export needs Chrome or Edge with WebCodecs enabled.');
     }
 
     const sourceCanvas = document.getElementById('c');
@@ -349,15 +365,15 @@
     const sizeLabel = drawOpts?.exportPx || 'live';
     const totalFrames = Math.max(1, Math.round(duration * fps));
     const frameDurationUs = Math.round(1_000_000 / fps);
+    const formatLabel = format === 'webm' ? 'WebM' : 'MP4';
     let encoder = null;
 
     window.GMCGeneratorExporting = true;
-    setBusy(true);
+    setBusy(true, format);
     setProgress(1);
 
     try {
-      setStatus(`Preparing encoder · ${sizeLabel}${drawOpts ? 'px' : ''}…`, 4);
-      /* Let the button/status paint before the first heavy frame. */
+      setStatus(`Preparing ${formatLabel} · ${sizeLabel}${drawOpts ? 'px' : ''}…`, 4);
       await nextPaint();
       await nextPaint();
       draw(currentSeed, drawOpts);
@@ -373,13 +389,9 @@
       const encodeCtx = encodeCanvas.getContext('2d', { alpha: false });
       if (!encodeCtx) throw new Error('Could not create export canvas.');
 
-      setStatus('Loading encoder…', 6);
-      const pipeline = await setupVideoPipeline(width, height, fps, quality);
+      setStatus(`Loading ${formatLabel} encoder…`, 6);
+      const pipeline = await setupVideoPipeline(format, width, height, fps, quality);
       encoder = pipeline.encoder;
-      if (pipeline.usedFallback) {
-        setStatus(`H.264 unavailable at ${width}×${height} — using WebM…`, 7);
-        await nextPaint();
-      }
       setStatus(`Rendering 0 / ${totalFrames} · ${width}×${height}`, 8);
 
       for (let index = 0; index < totalFrames; index += 1) {
@@ -409,12 +421,11 @@
         }
       }
 
-      setStatus('Finalizing video…', 94);
+      setStatus(`Finalizing ${formatLabel}…`, 94);
       const result = await pipeline.finish();
       const filename = `gmc_2d_${currentSeed}_${duration}s_${fps}fps_${width}x${height}.${result.ext}`;
       download(result.blob, filename);
-      const savedAs = result.label === 'MP4' ? 'MP4' : `${result.label} (H.264 unavailable at this size)`;
-      setStatus(`Saved ${savedAs} · ${duration}s · ${fps} fps · ${width}×${height} · ${quality}`, 100);
+      setStatus(`Saved ${result.label} · ${duration}s · ${fps} fps · ${width}×${height} · ${quality}`, 100);
       resetProgressLater();
     } finally {
       if (encoder && encoder.state !== 'closed') {
@@ -440,10 +451,17 @@
   });
   sizeSelect?.addEventListener('input', syncCustomVisibility);
 
-  button.addEventListener('click', () => {
-    exportMp4().catch((error) => {
+  mp4Button.addEventListener('click', () => {
+    exportVideo('mp4').catch((error) => {
       console.warn(error);
       setStatus(error?.message || 'MP4 export failed.', 0);
+    });
+  });
+
+  webmButton.addEventListener('click', () => {
+    exportVideo('webm').catch((error) => {
+      console.warn(error);
+      setStatus(error?.message || 'WebM export failed.', 0);
     });
   });
 })();

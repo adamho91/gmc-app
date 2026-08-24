@@ -380,6 +380,15 @@
   #canvas-action-controls .video-export-options select {
     cursor: pointer;
   }
+  #canvas-action-controls .video-export-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    width: 100%;
+  }
+  #canvas-action-controls .video-export-actions .canvas-action-btn {
+    width: 100%;
+  }
   #canvas-action-controls #video-export-progress {
     width: 100%;
     max-width: 168px;
