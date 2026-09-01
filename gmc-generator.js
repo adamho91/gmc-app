@@ -1161,12 +1161,31 @@ function restoreState() {
   return false;
 }
 
+function getPresetNames() {
+  const presets = loadPresets();
+  const order = window.GMC_GENERATOR_BUNDLED_PRESET_ORDER;
+  const names = Object.keys(presets);
+  if (!Array.isArray(order) || !order.length) return names.sort();
+  const ordered = [];
+  const seen = new Set();
+  for (const name of order) {
+    if (presets[name] && !seen.has(name)) {
+      ordered.push(name);
+      seen.add(name);
+    }
+  }
+  for (const name of names.sort()) {
+    if (!seen.has(name)) ordered.push(name);
+  }
+  return ordered;
+}
+
 function renderPresetList() {
   const list = document.getElementById('preset-list');
   if (!list) return;
   list.innerHTML = '';
   const presets = loadPresets();
-  const names = Object.keys(presets).sort();
+  const names = getPresetNames();
   if (names.length === 0) {
     list.innerHTML = '<div class="preset-empty">no presets saved</div>';
     return;
@@ -1246,7 +1265,7 @@ function isTypingTarget(el) {
 function loadPresetBySlot(slot) {
   if (slot < 0 || slot > 8) return;
   const presets = loadPresets();
-  const names = Object.keys(presets).sort();
+  const names = getPresetNames();
   const name = names[slot];
   if (!name) return;
   activePresetName = name;
