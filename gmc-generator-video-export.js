@@ -406,6 +406,7 @@
       startPct: 78,
       endPct: 98,
       totalFrames,
+      fps,
     });
 
     ffmpeg.on('log', logHandler);
@@ -784,6 +785,7 @@
       draw(currentSeed);
       window.GMCGeneratorExporting = false;
       setBusy(false);
+      setEncodingActive(false);
     }
   }
 
