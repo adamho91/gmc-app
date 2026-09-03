@@ -1110,6 +1110,10 @@ function captureState() {
 }
 
 function applyState(state) {
+  /* Live embeds: use full canvas W×H from the config — don't shrink to the primitive grid clip. */
+  if (document.documentElement.classList.contains('gmc-2d-embed') && state) {
+    state = { ...state, canvasPrimitiveLock: false };
+  }
   ALL_SLIDER_IDS.forEach(id => {
     const el = document.getElementById(id);
     const vl = document.getElementById(SLIDERS[id]);
