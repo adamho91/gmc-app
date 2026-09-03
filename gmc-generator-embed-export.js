@@ -133,13 +133,13 @@
     if (fullscreen) {
       return `<!-- GMC Generator · live 2D · full browser screen${flowIn ? ' · flow-in' : ''} -->
 <!-- Player loads from ${host} -->
-<style>html,body{margin:0;padding:0;overflow:hidden;height:100%;}</style>
-<div class="gmc-2d-embed gmc-2d-embed--fullscreen" style="position:fixed;inset:0;width:100vw;height:100vh;margin:0;line-height:0;background:transparent;z-index:0">
+<div class="gmc-2d-embed gmc-2d-embed--fullscreen" style="position:fixed;inset:0;width:100vw;height:100vh;margin:0;line-height:0;background:transparent;z-index:0;pointer-events:none" aria-hidden="true">
   <iframe
     src="${src}"
     title="GMC Generator"
-    style="position:absolute;inset:0;width:100%;height:100%;border:0;display:block;background:transparent"
+    style="position:absolute;inset:0;width:100%;height:100%;border:0;display:block;background:transparent;pointer-events:none"
     allow="autoplay"
+    tabindex="-1"
   ></iframe>
 </div>`;
     }
@@ -272,17 +272,17 @@
     const sizeLabel = fullscreen ? 'full browser screen' : `${w}×${h}`;
     const flowLabel = flowIn ? ' · flow-in' : '';
     const wrapStyle = fullscreen
-      ? 'position:fixed;inset:0;width:100vw;height:100vh;margin:0;line-height:0;background:transparent;z-index:0'
+      ? 'position:fixed;inset:0;width:100vw;height:100vh;margin:0;line-height:0;background:transparent;z-index:0;pointer-events:none'
       : `width:100%;max-width:${w}px;margin:0 auto;position:relative;line-height:0;background:transparent`;
     const canvasStyle = fullscreen
-      ? 'width:100%;height:100%;display:block;background:transparent'
+      ? 'width:100%;height:100%;display:block;background:transparent;pointer-events:none'
       : 'position:absolute;inset:0;width:100%;height:100%;display:block;background:transparent';
     const aspectPad = fullscreen
       ? ''
       : `\n  <div style="width:100%;padding-top:${ratio}%;pointer-events:none" aria-hidden="true"></div>`;
 
     return `<!-- GMC · lite field + animation · ${sizeLabel}${flowLabel} · self-contained -->
-${fullscreen ? '<style>html,body{margin:0;padding:0;overflow:hidden;height:100%;}</style>\n' : ''}<div class="gmc-lite${fullscreen ? ' gmc-lite--fullscreen' : ''}" style="${wrapStyle}">${aspectPad}
+<div class="gmc-lite${fullscreen ? ' gmc-lite--fullscreen' : ''}" style="${wrapStyle}"${fullscreen ? ' aria-hidden="true"' : ''}>${aspectPad}
   <canvas id="${uid}" width="${w}" height="${h}" style="${canvasStyle}"></canvas>
 </div>
 <script>
