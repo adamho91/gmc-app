@@ -1378,6 +1378,10 @@ syncCheckerGridUi();
 let _animLast = null;
 function animFrame(now) {
   requestAnimationFrame(animFrame);
+  if (document.documentElement.classList.contains('gmc-2d-embed-loading')) {
+    _animLast = now;
+    return;
+  }
   if (window.GMCGeneratorExporting) {
     _animLast = now;
     return;
@@ -1403,35 +1407,58 @@ function animFrame(now) {
 }
 requestAnimationFrame(animFrame);
 
-// ── Init ──────────────────────────────────────────────────────────────────────
-initPresets()
-  .then(() => {
-    const embedState = readEmbedConfigFromUrl();
-    if (embedState) {
-      applyState(embedState);
-      return;
-    }
-    if (restoreState()) return;
-    const defName = window.GMC_GENERATOR_DEFAULT_PRESET;
-    const defState = defName && presetsStore[defName];
-    if (defState) {
-      activePresetName = defName;
-      const input = document.getElementById('preset-name-input');
-      if (input) input.value = defName;
-      applyState(defState);
-      renderPresetList();
-      return;
-    }
-    draw(currentSeed);
-  })
-  .catch((err) => {
-    console.warn(err);
-    renderPresetList();
-    const embedState = readEmbedConfigFromUrl();
-    if (embedState) {
-      applyState(embedState);
-      return;
-    }
-    if (!restoreState()) draw(currentSeed);
-  });
+function revealEmbedIfNeeded() {
+  const root = document.documentElement;
+  if (!root.classList.contains('gmc-2d-embed')) return;
+  root.classList.remove('gmc-2d-embed-loading');
+  root.classList.add('gmc-2d-embed-ready');
+}
 
+function bootGenerator() {
+  const embedState = readEmbedConfigFromUrl();
+  if (embedState) {
+    applyState(embedState);
+    revealEmbedIfNeeded();
+    return;
+  }
+  if (restoreState()) {
+    revealEmbedIfNeeded();
+    return;
+  }
+  const defName = window.GMC_GENERATOR_DEFAULT_PRESET;
+  const defState = defName && presetsStore[defName];
+  if (defState) {
+    activePresetName = defName;
+    const input = document.getElementById('preset-name-input');
+    if (input) input.value = defName;
+    applyState(defState);
+    renderPresetList();
+    revealEmbedIfNeeded();
+    return;
+  }
+  draw(currentSeed);
+  revealEmbedIfNeeded();
+}
+
+// Embeds apply URL config immediately (no IndexedDB wait) so the wrong default never flashes.
+if (document.documentElement.classList.contains('gmc-2d-embed')) {
+  try {
+    bootGenerator();
+  } catch (err) {
+    console.warn(err);
+    revealEmbedIfNeeded();
+  }
+} else {
+  initPresets()
+    .then(() => bootGenerator())
+    .catch((err) => {
+      console.warn(err);
+      renderPresetList();
+      try {
+        bootGenerator();
+      } catch (bootErr) {
+        console.warn(bootErr);
+        if (!restoreState()) draw(currentSeed);
+      }
+    });
+}
