@@ -7,6 +7,8 @@
   const sizeRow = document.getElementById('embed-size-row');
   const fullscreenInput = document.getElementById('embed-fullscreen');
   const flowInInput = document.getElementById('embed-flow-in');
+  const randomSeedInput = document.getElementById('embed-random-seed');
+  const randomField = document.getElementById('embed-random-field');
   const widthInput = document.getElementById('embed-display-w');
   const heightInput = document.getElementById('embed-display-h');
   const status = document.getElementById('embed-status');
@@ -21,6 +23,7 @@
   const MODE_KEY = 'gmc-2d-embed-mode';
   const FULL_KEY = 'gmc-2d-embed-fullscreen';
   const FLOW_KEY = 'gmc-2d-embed-flow-in';
+  const RANDOM_KEY = 'gmc-2d-embed-random-seed';
 
   function setStatus(message) {
     if (status) status.textContent = message || '';
@@ -44,6 +47,10 @@
 
   function isFlowIn() {
     return !!flowInInput?.checked;
+  }
+
+  function isRandomOnLoad() {
+    return !!randomSeedInput?.checked;
   }
 
   function detectHostUrl() {
@@ -84,10 +91,12 @@
     const full = isFullscreen();
     if (hostField) hostField.hidden = mode !== 'live';
     if (sizeRow) sizeRow.hidden = full;
+    if (randomField) randomField.hidden = mode !== 'lite';
     try {
       localStorage.setItem(MODE_KEY, mode);
       localStorage.setItem(FULL_KEY, full ? '1' : '0');
       localStorage.setItem(FLOW_KEY, isFlowIn() ? '1' : '0');
+      localStorage.setItem(RANDOM_KEY, isRandomOnLoad() ? '1' : '0');
     } catch (_) {}
   }
 
@@ -105,6 +114,9 @@
     } catch (_) {}
     try {
       if (flowInInput) flowInInput.checked = localStorage.getItem(FLOW_KEY) === '1';
+    } catch (_) {}
+    try {
+      if (randomSeedInput) randomSeedInput.checked = localStorage.getItem(RANDOM_KEY) === '1';
     } catch (_) {}
     try {
       const raw = localStorage.getItem(SIZE_KEY);
@@ -184,15 +196,22 @@
       ['#d9d7cc', '#e8e77a', '#f7f729', '#d9d700', '#8c8700', '#5c5a00'],
       ['#ffc4db', '#fba8d1', '#f78cc8', '#f366aa', '#f03679', '#c01050'],
     ];
+    let allFamilies = families.map((fam) => fam.slice());
     try {
+      if (typeof FAL_COLUMNS !== 'undefined' && typeof falTonalRamp === 'function') {
+        allFamilies = FAL_COLUMNS.map((col) => falTonalRamp(col).slice());
+      }
       if (typeof PALETTES !== 'undefined' && state.palette && PALETTES[state.palette]?.families) {
         families = PALETTES[state.palette].families.map((fam) => fam.slice());
-      } else if (typeof FAL_COLUMNS !== 'undefined' && typeof falTonalRamp === 'function') {
-        families = FAL_COLUMNS.map((col) => falTonalRamp(col).slice());
+        if (state.palette === 'fal_random' || !allFamilies.length) {
+          allFamilies = families.map((fam) => fam.slice());
+        }
+      } else if (allFamilies.length) {
+        families = allFamilies.slice(0, 6).map((fam) => fam.slice());
       }
     } catch (_) {}
 
-    return { bgA, bgB, families };
+    return { bgA, bgB, families, allFamilies };
   }
 
   function bool(state, key, fallback) {
@@ -201,11 +220,11 @@
   }
 
   /** Self-contained canvas — checker + dots + meta animation (no iframe / full app). */
-  function buildLiteAnimationEmbed(state, w, h, fullscreen, flowIn) {
+  function buildLiteAnimationEmbed(state, w, h, fullscreen, flowIn, randomOnLoad) {
     const seed = Number(state.seed) || 1;
     const cols = Math.max(4, Math.round(num(state, 'cols', 35)));
     const rows = Math.max(4, Math.round(num(state, 'rows', Math.round(cols * (h / w)))));
-    const { bgA, bgB, families } = resolveLitePalette(state);
+    const { bgA, bgB, families, allFamilies } = resolveLitePalette(state);
     const ratio = ((h / w) * 100).toFixed(4);
     const uid = `gmc-lite-${seed.toString(36)}-${Math.abs((w * 1000 + h) | 0).toString(36)}`;
 
@@ -217,9 +236,11 @@
       rows,
       fullscreen: !!fullscreen,
       flowIn: !!flowIn,
+      randomOnLoad: !!randomOnLoad,
       bgA,
       bgB,
       families,
+      allFamilies: allFamilies && allFamilies.length ? allFamilies : families,
       checkerGrid: bool(state, 'checkerGrid', true),
       checkerVar: num(state, 'checkerVar', 0),
       blobCount: Math.max(0, Math.round(num(state, 'blobCount', 10))),
@@ -271,6 +292,7 @@
     const cfgJson = JSON.stringify(cfg);
     const sizeLabel = fullscreen ? 'full browser screen' : `${w}×${h}`;
     const flowLabel = flowIn ? ' · flow-in' : '';
+    const randomLabel = randomOnLoad ? ' · randomize' : '';
     const wrapStyle = fullscreen
       ? 'position:fixed;inset:0;width:100vw;height:100vh;margin:0;line-height:0;background:transparent;z-index:0;pointer-events:none'
       : `width:100%;max-width:${w}px;margin:0 auto;position:relative;line-height:0;background:transparent`;
@@ -281,7 +303,7 @@
       ? ''
       : `\n  <div style="width:100%;padding-top:${ratio}%;pointer-events:none" aria-hidden="true"></div>`;
 
-    return `<!-- GMC · lite field + animation · ${sizeLabel}${flowLabel} · self-contained -->
+    return `<!-- GMC · lite field + animation · ${sizeLabel}${flowLabel}${randomLabel} · self-contained -->
 <div class="gmc-lite${fullscreen ? ' gmc-lite--fullscreen' : ''}" style="${wrapStyle}"${fullscreen ? ' aria-hidden="true"' : ''}>${aspectPad}
   <canvas id="${uid}" width="${w}" height="${h}" style="${canvasStyle}"></canvas>
 </div>
@@ -291,6 +313,15 @@
   var canvas=document.getElementById("${uid}");
   if(!canvas)return;
   var ctx=canvas.getContext("2d");
+  if(C.randomOnLoad){
+    C.seed=((Math.random()*0xFFFFFF)|0)||1;
+    var pool=(C.allFamilies&&C.allFamilies.length?C.allFamilies:C.families).slice();
+    for(var pi=pool.length-1;pi>0;pi--){
+      var pj=(Math.random()*(pi+1))|0;
+      var ptmp=pool[pi];pool[pi]=pool[pj];pool[pj]=ptmp;
+    }
+    C.families=pool.slice(0,Math.min(6,pool.length));
+  }
   var W=C.w,H=C.h,COLS=C.cols,ROWS=C.rows,CS=W/COLS,t0=performance.now();
 
   function fit(){
@@ -605,15 +636,17 @@
     const mode = getEmbedMode();
     const full = isFullscreen();
     const flow = isFlowIn();
+    const randomize = mode === 'lite' && isRandomOnLoad();
     const { w, h } = readDisplaySize();
     const state = captureState();
     const flowNote = flow ? ' · flow-in' : '';
+    const randomNote = randomize ? ' · randomize on refresh' : '';
 
     if (mode === 'lite') {
-      textArea.value = buildLiteAnimationEmbed(state, w, h, full, flow);
+      textArea.value = buildLiteAnimationEmbed(state, w, h, full, flow, randomize);
       setStatus(full
-        ? `Lite field + animation · full browser screen${flowNote} · self-contained (no host URL)`
-        : `Lite field + animation · ${w}×${h}${flowNote} · self-contained (no host URL)`);
+        ? `Lite field + animation · full browser screen${flowNote}${randomNote} · self-contained (no host URL)`
+        : `Lite field + animation · ${w}×${h}${flowNote}${randomNote} · self-contained (no host URL)`);
       return;
     }
 
@@ -664,6 +697,10 @@
     generate();
   });
   flowInInput?.addEventListener('change', () => {
+    syncModeUi();
+    generate();
+  });
+  randomSeedInput?.addEventListener('change', () => {
     syncModeUi();
     generate();
   });
