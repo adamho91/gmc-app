@@ -64,7 +64,7 @@ ${hostLine}
 .gmc-pattern-procedural #blobs-back-layer,.gmc-pattern-procedural #text-layer,.gmc-pattern-procedural #blobs-front-layer{position:absolute;inset:0}
 .gmc-pattern-procedural #vas-c,.gmc-pattern-procedural #vas-c-front{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;clip-path:circle(var(--sphere-r) at var(--sphere-x) var(--sphere-y))}
 .gmc-pattern-procedural #text-layer canvas{display:block;width:100%!important;height:100%!important;background:transparent!important}
-.gmc-pattern-procedural #canvas-wrap.bg-checker{background-color:#fff;background-image:linear-gradient(45deg,#d4d4d4 25%,transparent 25%),linear-gradient(-45deg,#d4d4d4 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#d4d4d4 75%),linear-gradient(-45deg,transparent 75%,#d4d4d4 75%);background-size:16px 16px;background-position:0 0,0 8px,8px -8px,-8px 0}
+.gmc-pattern-procedural #canvas-wrap.bg-checker{background-color:transparent!important;background-image:none!important}
 html.gmc-embed-loading .gmc-pattern-procedural{opacity:0}
 html.gmc-embed-ready .gmc-pattern-procedural{opacity:1}
 </style>

@@ -1261,10 +1261,17 @@ function applyExportBackgroundPreview(bg) {
   if (!wrap) return;
   wrap.classList.remove("bg-checker", "bg-white");
   wrap.style.background = "";
+  wrap.style.backgroundImage = "";
   const cb = document.getElementById("canvas-bg-checker");
   if (bg?.transparent) {
-    wrap.classList.add("bg-checker");
     if (cb) cb.checked = true;
+    /* Editor: checkerboard preview. Embeds: real transparency so the host page shows through. */
+    if (isEmbedPage()) {
+      wrap.style.background = "transparent";
+      wrap.style.backgroundImage = "none";
+    } else {
+      wrap.classList.add("bg-checker");
+    }
   } else {
     if (cb) cb.checked = false;
     wrap.style.background = bg?.color || "#ffffff";

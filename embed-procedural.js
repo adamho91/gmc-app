@@ -11,7 +11,7 @@
   document.documentElement.classList.add("gmc-embed", "gmc-embed-inline", "gmc-embed-loading");
 
   mount.innerHTML =
-    '<div id="canvas-wrap" class="bg-checker">' +
+    '<div id="canvas-wrap">' +
     '<div id="blobs-back-layer"><svg id="vas-c" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice" aria-hidden="true"></svg></div>' +
     '<div id="text-layer"></div>' +
     '<div id="blobs-front-layer"><svg id="vas-c-front" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice" aria-hidden="true"></svg></div>' +
