@@ -615,6 +615,9 @@ function draw(newSeed, opts) {
       const stepPx = metaStep * W;
 
       const nodes = [];
+      /* Largest radius this chain can grow to — keep full circles inside the frame (no edge crop). */
+      const maxNodeR = Math.max(2, metaSize * W * (1 + metaSVar * 0.8) * (metaPulse > 0 ? 1.16 : 1));
+      const edgePad = maxNodeR + (metaRing > 0 ? maxNodeR * 0.14 : 0);
       for (let n = 0; n < metaNodes; n++) {
         // Per-node phase keeps each node's motion independent but stable.
         const phase = crr(0, Math.PI*2);
@@ -622,8 +625,11 @@ function draw(newSeed, opts) {
         const baseSize = metaSize * W;
         let r = baseSize * (1 + crr(-metaSVar*0.6, metaSVar*0.8));
         if (metaPulse > 0) r *= 1 + Math.sin(animTime * metaPulse * 2.2 + phase) * 0.16;
+        r = Math.max(2, r);
         // Decide: ring or filled (metaRing = probability of ring)
         const isRing = crand() < metaRing;
+        const strokePad = isRing ? Math.max(1, r * 0.28) * 0.5 : 0;
+        const pad = r + strokePad;
         // Drift Speed gently sways each node around its walk position.
         let nx2 = x, ny2 = y;
         if (metaDrift > 0) {
@@ -631,16 +637,19 @@ function draw(newSeed, opts) {
           nx2 += Math.sin(animTime * metaDrift * 1.3 + phase) * amp;
           ny2 += Math.cos(animTime * metaDrift * 1.1 + phase * 1.7) * amp;
         }
-        nodes.push({ x: nx2, y: ny2, r: Math.max(2, r), isRing });
+        /* Inset by radius so rings/fills aren't sliced by the canvas edge. */
+        nx2 = Math.max(pad, Math.min(W - pad, nx2));
+        ny2 = Math.max(pad, Math.min(H - pad, ny2));
+        nodes.push({ x: nx2, y: ny2, r, isRing });
 
         // Step to next node — slight direction drift
         angle += crr(-0.9, 0.9);
         const dist = stepPx * crr(0.7, 1.4);
         x += Math.cos(angle) * dist;
         y += Math.sin(angle) * dist;
-        // Soft bounce off edges
-        x = Math.max(0.02*W, Math.min(0.98*W, x));
-        y = Math.max(0.02*H, Math.min(0.98*H, y));
+        // Soft bounce — keep room for the largest node so motion never clips
+        x = Math.max(edgePad, Math.min(W - edgePad, x));
+        y = Math.max(edgePad, Math.min(H - edgePad, y));
       }
 
       // Draw nodes — filled = palette color; rings punch checker + stroke from Node stroke
