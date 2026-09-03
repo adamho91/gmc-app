@@ -1475,11 +1475,28 @@ function syncLiveEmbedViewport() {
   document.documentElement.classList.add('gmc-2d-embed-fill');
   const area = document.getElementById('canvas-area');
   const vv = window.visualViewport;
-  const cssW = Math.max(1, Math.floor((vv && vv.width) || area?.clientWidth || window.innerWidth || 1));
-  const cssH = Math.max(1, Math.floor((vv && vv.height) || area?.clientHeight || window.innerHeight || 1));
+  const cssW = Math.max(1, Math.floor((vv && vv.width) || area?.clientWidth || document.documentElement.clientWidth || window.innerWidth || 1));
+  const cssH = Math.max(1, Math.floor((vv && vv.height) || area?.clientHeight || document.documentElement.clientHeight || window.innerHeight || 1));
+  const designW = Math.max(1, Number(document.getElementById('canvasWidth')?.defaultValue) || Number(document.getElementById('canvasWidth')?.getAttribute('data-design-w')) || canvas.width || 1440);
+  const designH = Math.max(1, Number(document.getElementById('canvasHeight')?.defaultValue) || Number(document.getElementById('canvasHeight')?.getAttribute('data-design-h')) || canvas.height || designW);
+  /* Prefer baked design aspect from first apply; fall back to square. */
+  const designAspect = (window.__gmc2dDesignAspect > 0)
+    ? window.__gmc2dDesignAspect
+    : (designW / designH);
+  if (!window.__gmc2dDesignAspect) window.__gmc2dDesignAspect = designAspect;
+
+  let dispW;
+  let dispH;
+  if (cssW / Math.max(1, cssH) > designAspect) {
+    dispW = cssW;
+    dispH = Math.max(1, Math.floor(cssW / designAspect));
+  } else {
+    dispH = cssH;
+    dispW = Math.max(1, Math.floor(cssH * designAspect));
+  }
   const dpr = Math.min(2, window.devicePixelRatio || 1);
-  const w = clampCanvasDimension(Math.floor(cssW * dpr / 2) * 2);
-  const h = clampCanvasDimension(Math.floor(cssH * dpr / 2) * 2);
+  const w = clampCanvasDimension(Math.floor(dispW * dpr / 2) * 2);
+  const h = clampCanvasDimension(Math.floor(dispH * dpr / 2) * 2);
   const widthInput = document.getElementById('canvasWidth');
   const heightInput = document.getElementById('canvasHeight');
   if (!widthInput || !heightInput) return false;
@@ -1491,6 +1508,10 @@ function syncLiveEmbedViewport() {
   setCanvasDimensionLabel('v-canvas-width', w);
   setCanvasDimensionLabel('v-canvas-height', h);
   draw(currentSeed);
+  canvas.style.setProperty('width', `${dispW}px`, 'important');
+  canvas.style.setProperty('height', `${dispH}px`, 'important');
+  canvas.style.setProperty('max-width', 'none', 'important');
+  canvas.style.setProperty('max-height', 'none', 'important');
   return true;
 }
 
@@ -1520,6 +1541,9 @@ function bootGenerator() {
   }
   if (embedFlowIn) animTime = 0;
   if (embedState) {
+    const dw = Number(embedState.canvasWidth) || Number(embedState.canvasSize) || 1440;
+    const dh = Number(embedState.canvasHeight) || dw;
+    window.__gmc2dDesignAspect = dw / Math.max(1, dh);
     applyState(embedState);
     wireLiveEmbedViewport();
     revealEmbedIfNeeded();

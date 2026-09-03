@@ -294,10 +294,10 @@
     const flowLabel = flowIn ? ' · flow-in' : '';
     const randomLabel = randomOnLoad ? ' · randomize' : '';
     const wrapStyle = fullscreen
-      ? 'position:fixed;inset:0;width:100%;height:100%;max-width:100%;max-height:100%;margin:0;line-height:0;background:transparent;z-index:0;pointer-events:none;overflow:hidden'
+      ? 'position:fixed;inset:0;width:100%;height:100%;margin:0;line-height:0;background:transparent;z-index:0;pointer-events:none;overflow:hidden'
       : `width:100%;max-width:${w}px;margin:0 auto;position:relative;line-height:0;background:transparent;aspect-ratio:${w} / ${h}`;
     const canvasStyle = fullscreen
-      ? 'display:block;background:transparent;pointer-events:none;position:absolute;left:0;top:0'
+      ? 'display:block;background:transparent;pointer-events:none;position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);max-width:none;max-height:none'
       : 'position:absolute;inset:0;width:100%;height:100%;display:block;background:transparent;object-fit:contain';
     const aspectPad = fullscreen
       ? ''
@@ -324,12 +324,24 @@
   }
   var W=C.w,H=C.h,COLS=C.cols,ROWS=C.rows,CS=W/COLS,t0=performance.now();
   var designAspect=(C.w>0&&C.h>0)?(C.w/C.h):1;
+  var designCols=COLS;
+  var designRows=Math.max(4,ROWS);
 
   function viewportSize(){
     var vv=window.visualViewport;
-    var cssW=Math.max(1,Math.floor((vv&&vv.width)||window.innerWidth||1));
-    var cssH=Math.max(1,Math.floor((vv&&vv.height)||window.innerHeight||1));
+    var cssW=Math.max(1,Math.floor((vv&&vv.width)||document.documentElement.clientWidth||window.innerWidth||1));
+    var cssH=Math.max(1,Math.floor((vv&&vv.height)||document.documentElement.clientHeight||window.innerHeight||1));
     return{cssW:cssW,cssH:cssH};
+  }
+
+  function lockElSize(el,w,h){
+    el.style.setProperty("width",w+"px","important");
+    el.style.setProperty("height",h+"px","important");
+    el.style.setProperty("max-width","none","important");
+    el.style.setProperty("max-height","none","important");
+    el.style.setProperty("min-width",w+"px","important");
+    el.style.setProperty("min-height",h+"px","important");
+    el.style.setProperty("object-fit","fill","important");
   }
 
   function fit(){
@@ -337,38 +349,55 @@
     var cssW,cssH,cw,ch;
     if(C.fullscreen){
       var vp=viewportSize();
-      cssW=vp.cssW;cssH=vp.cssH;
+      /* Cover viewport with design aspect — never stretch portrait (keeps circles round). */
+      if(vp.cssW/Math.max(1,vp.cssH)>designAspect){
+        cssW=vp.cssW;
+        cssH=Math.max(1,Math.floor(vp.cssW/designAspect));
+      }else{
+        cssH=vp.cssH;
+        cssW=Math.max(1,Math.floor(vp.cssH*designAspect));
+      }
       cw=Math.max(2,Math.floor(cssW*dpr/2)*2);
       ch=Math.max(2,Math.floor(cssH*dpr/2)*2);
-      canvas.style.width=cssW+"px";
-      canvas.style.height=cssH+"px";
-      canvas.style.transform="translateZ(0)";
+      /* Keep original grid density (same spaciness as desktop), just scale pixels. */
+      COLS=designCols;
+      ROWS=designRows;
+      CS=cw/COLS;
+      lockElSize(canvas,cssW,cssH);
+      canvas.style.setProperty("left","50%","important");
+      canvas.style.setProperty("top","50%","important");
+      canvas.style.setProperty("right","auto","important");
+      canvas.style.setProperty("bottom","auto","important");
+      canvas.style.setProperty("transform","translate(-50%,-50%)","important");
+      canvas.style.setProperty("position","absolute","important");
     }else{
       var parent=canvas.parentElement;
       var rect=parent?parent.getBoundingClientRect():null;
-      cssW=Math.max(1,Math.floor((rect&&rect.width)||C.w));
-      cssH=Math.max(1,Math.floor((rect&&rect.height)||C.h));
-      /* Contain design aspect inside the box — never stretch. */
-      var boxAspect=cssW/Math.max(1,cssH);
-      var dispW,dispH;
-      if(boxAspect>designAspect){dispH=cssH;dispW=Math.max(1,Math.floor(cssH*designAspect));}
-      else{dispW=cssW;dispH=Math.max(1,Math.floor(cssW/Math.max(0.0001,designAspect)));}
-      cw=Math.max(2,Math.floor(dispW*dpr/2)*2);
-      ch=Math.max(2,Math.floor(dispH*dpr/2)*2);
-      canvas.style.width=dispW+"px";
-      canvas.style.height=dispH+"px";
-      canvas.style.left=((cssW-dispW)/2)+"px";
-      canvas.style.top=((cssH-dispH)/2)+"px";
-      canvas.style.right="auto";
-      canvas.style.bottom="auto";
+      var boxW=Math.max(1,Math.floor((rect&&rect.width)||C.w));
+      var boxH=Math.max(1,Math.floor((rect&&rect.height)||C.h));
+      var boxAspect=boxW/Math.max(1,boxH);
+      if(boxAspect>designAspect){cssH=boxH;cssW=Math.max(1,Math.floor(boxH*designAspect));}
+      else{cssW=boxW;cssH=Math.max(1,Math.floor(boxW/Math.max(0.0001,designAspect)));}
+      cw=Math.max(2,Math.floor(cssW*dpr/2)*2);
+      ch=Math.max(2,Math.floor(cssH*dpr/2)*2);
+      COLS=designCols;
+      ROWS=designRows;
+      CS=cw/COLS;
+      lockElSize(canvas,cssW,cssH);
+      canvas.style.setProperty("left",((boxW-cssW)/2)+"px","important");
+      canvas.style.setProperty("top",((boxH-cssH)/2)+"px","important");
+      canvas.style.setProperty("right","auto","important");
+      canvas.style.setProperty("bottom","auto","important");
+      canvas.style.setProperty("transform","none","important");
+      canvas.style.setProperty("position","absolute","important");
     }
-    if(cw===W&&ch===H)return;
+    if(cw===canvas.width&&ch===canvas.height&&W===cw&&H===ch)return;
     canvas.width=cw;canvas.height=ch;
-    W=cw;H=ch;CS=W/COLS;
-    ROWS=Math.max(4,Math.round(H/CS));
+    W=cw;H=ch;
   }
   fit();
   window.addEventListener("resize",fit);
+  window.addEventListener("orientationchange",function(){setTimeout(fit,50);});
   if(window.visualViewport){
     window.visualViewport.addEventListener("resize",fit);
     window.visualViewport.addEventListener("scroll",fit);
