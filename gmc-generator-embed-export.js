@@ -177,18 +177,18 @@
     }
 
     let families = [
-      ['#d5b8ff', '#c49eff', '#b384ff', '#9a64f2', '#793ed9'],
-      ['#c5e9ff', '#9cd4ff', '#73bffe', '#4fa4fc', '#3081f7'],
-      ['#e5ece7', '#c7ecf1', '#a8edfa', '#99e1ee', '#98c8cd'],
-      ['#f1ffd2', '#d6ff7e', '#bbff2a', '#8ad904', '#458c0b'],
-      ['#d9d7cc', '#e8e77a', '#f7f729', '#d9d700', '#8c8700'],
-      ['#ffc4db', '#fba8d1', '#f78cc8', '#f366aa', '#f03679'],
+      ['#d5b8ff', '#c49eff', '#b384ff', '#9a64f2', '#793ed9', '#5718C0'],
+      ['#c5e9ff', '#9cd4ff', '#73bffe', '#4fa4fc', '#3081f7', '#0b5fff'],
+      ['#e5ece7', '#c7ecf1', '#a8edfa', '#99e1ee', '#98c8cd', '#6a9a9f'],
+      ['#f1ffd2', '#d6ff7e', '#bbff2a', '#8ad904', '#458c0b', '#2d5c08'],
+      ['#d9d7cc', '#e8e77a', '#f7f729', '#d9d700', '#8c8700', '#5c5a00'],
+      ['#ffc4db', '#fba8d1', '#f78cc8', '#f366aa', '#f03679', '#c01050'],
     ];
     try {
       if (typeof PALETTES !== 'undefined' && state.palette && PALETTES[state.palette]?.families) {
-        families = PALETTES[state.palette].families.map((fam) => fam.slice(0, 5));
+        families = PALETTES[state.palette].families.map((fam) => fam.slice());
       } else if (typeof FAL_COLUMNS !== 'undefined' && typeof falTonalRamp === 'function') {
-        families = FAL_COLUMNS.map((col) => falTonalRamp(col).slice(0, 5));
+        families = FAL_COLUMNS.map((col) => falTonalRamp(col).slice());
       }
     } catch (_) {}
 
@@ -262,6 +262,10 @@
       flow: num(state, 'metaFlow', 0.3),
       metaColor: state.metaColor || 'random',
       metaStroke: state.metaStroke || 'family_random',
+      ovCount: Math.max(0, Math.round(num(state, 'ovCount', 0))),
+      ovSize: num(state, 'ovSize', 0.35),
+      ovOpacity: num(state, 'ovOpacity', 0.45),
+      ovSoft: num(state, 'ovSoft', 2),
     };
 
     const cfgJson = JSON.stringify(cfg);
@@ -403,7 +407,7 @@ ${fullscreen ? '<style>html,body{margin:0;padding:0;overflow:hidden;height:100%;
       return Math.max(0,1-Math.pow(d,C.softness));
     }
 
-    /* --- blobs (seeded once per frame, same order as main app) --- */
+    /* --- blobs / mega / overlays / cell scales (same RNG order as main app) --- */
     var blobs=[];
     for(var i=0;i<C.blobCount;i++){
       var famIdx=(blobs.length===0||rand()<C.cVar)?ri(0,C.families.length-1):blobs[ri(0,blobs.length-1)].famIdx;
@@ -418,6 +422,22 @@ ${fullscreen ? '<style>html,body{margin:0;padding:0;overflow:hidden;height:100%;
       }
     }
     var units=blobs.concat(mega);
+    var ovBlobs=[];
+    for(var oi=0;oi<C.ovCount;oi++){
+      var ofam=C.families[ri(0,C.families.length-1)];
+      ovBlobs.push({
+        cx:rr(0.05,0.95),cy:rr(0.05,0.95),
+        r:rr(C.ovSize*0.5,C.ovSize*1.3),
+        stretch:rr(0.6,1.6),angle:rr(0,Math.PI),
+        color:ofam[ri(1,Math.max(1,ofam.length-2))]
+      });
+    }
+    var cellScale=[];
+    for(var csr=0;csr<ROWS;csr++){
+      for(var csc=0;csc<COLS;csc++){
+        cellScale.push(C.checkerVar>0?Math.max(0.15,rr(1-C.checkerVar*0.7,1+C.checkerVar*0.7)):1);
+      }
+    }
 
     ctx.clearRect(0,0,W,H);
     ctx.globalCompositeOperation="source-over";
@@ -428,18 +448,16 @@ ${fullscreen ? '<style>html,body{margin:0;padding:0;overflow:hidden;height:100%;
     if(C.checkerGrid){
       for(var row=0;row<ROWS;row++){
         for(var col=0;col<COLS;col++){
-          var sc=C.checkerVar>0?Math.max(0.15,rr(1-C.checkerVar*0.7,1+C.checkerVar*0.7)):1;
           var appear=flowAppear(col,row,0,time);
           if(appear<=0.01)continue;
+          var sc=cellScale[row*COLS+col];
           var fill=(row+col)%2===0?C.bgA:C.bgB;
           var nx=(col+0.5)/COLS,ny=(row+0.5)/ROWS,p=compWarp(nx,ny);
           var cw=CS*sc*appear,ch=CS*sc*appear;
-          ctx.globalAlpha=Math.min(1,0.35+appear*0.65);
           ctx.fillStyle=fill;
           ctx.fillRect(p.px-cw/2,p.py-ch/2,cw,ch);
         }
       }
-      ctx.globalAlpha=1;
     }
 
     if(C.metaMode!=="replace"){
@@ -471,7 +489,6 @@ ${fullscreen ? '<style>html,body{margin:0;padding:0;overflow:hidden;height:100%;
             var pw=compWarp(nx2,ny2),wv=warpAt(nx2,ny2);
             var rx=baseR*wv.sz*wv.sx,ry=baseR*wv.sz*wv.sy;
             ctx.save();
-            ctx.globalAlpha=Math.min(1,0.25+appearD*0.75);
             ctx.translate(pw.px,pw.py);
             if(wv.ang)ctx.rotate(wv.ang);
             ctx.beginPath();
@@ -482,7 +499,37 @@ ${fullscreen ? '<style>html,body{margin:0;padding:0;overflow:hidden;height:100%;
           }
         }
       }
-      ctx.globalAlpha=1;
+    }
+
+    if(ovBlobs.length){
+      var ovAppear=C.flowIn?Math.max(0,Math.min(1,(time-FLOW_DUR*0.35)/0.3)):1;
+      ovAppear=ovAppear<=0?0:(ovAppear>=1?1:1-Math.pow(1-ovAppear,3));
+      if(ovAppear>0.01){
+        ctx.globalCompositeOperation="multiply";
+        for(var obi=0;obi<ovBlobs.length;obi++){
+          var ob=ovBlobs[obi];
+          var orx=ob.r*ob.stretch*W*ovAppear;
+          var ory=(ob.r/ob.stretch)*H*ovAppear;
+          var ocx=ob.cx*W,ocy=ob.cy*H;
+          var rgb=hexRgb(ob.color);
+          var nSoft=C.ovSoft||2;
+          ctx.save();
+          ctx.translate(ocx,ocy);
+          ctx.rotate(ob.angle);
+          ctx.beginPath();
+          for(var si=0;si<=120;si++){
+            var st=(si/120)*Math.PI*2,ct=Math.cos(st),ss=Math.sin(st);
+            var sx=Math.sign(ct)*Math.pow(Math.abs(ct),2/nSoft)*orx;
+            var sy=Math.sign(ss)*Math.pow(Math.abs(ss),2/nSoft)*ory;
+            if(si===0)ctx.moveTo(sx,sy);else ctx.lineTo(sx,sy);
+          }
+          ctx.closePath();
+          ctx.fillStyle="rgba("+rgb[0]+","+rgb[1]+","+rgb[2]+","+C.ovOpacity+")";
+          ctx.fill();
+          ctx.restore();
+        }
+        ctx.globalCompositeOperation="source-over";
+      }
     }
 
     if(C.metaMode!=="off"&&C.chains>0){
@@ -492,7 +539,7 @@ ${fullscreen ? '<style>html,body{margin:0;padding:0;overflow:hidden;height:100%;
       var metaAppear=C.flowIn?Math.max(0,Math.min(1,(time-FLOW_DUR*0.55)/0.28)):1;
       metaAppear=metaAppear<=0?0:(metaAppear>=1?1:1-Math.pow(1-metaAppear,3));
       if(metaAppear>0.01){
-      ctx.globalAlpha=C.opacity*metaAppear;
+      ctx.globalAlpha=C.opacity;
       for(var ch=0;ch<C.chains;ch++){
         var fam;
         if(C.metaColor==="single")fam=C.families[0];

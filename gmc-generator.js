@@ -459,10 +459,9 @@ function draw(newSeed, opts) {
         const { px, py } = compWarp(nx, ny);
         const cw = CS * sc * appear, ch = CS * sc * appear;
         const x = px - cw/2, y = py - ch/2;
-        ctx.globalAlpha = Math.min(1, 0.35 + appear * 0.65);
+        ctx.globalAlpha = 1;
         ctx.fillStyle = fill;
         ctx.fillRect(x, y, cw, ch);
-        ctx.globalAlpha = 1;
         if (!embedFlowIn || appear >= 0.999) {
           svgEls.push(`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${cw.toFixed(1)}" height="${ch.toFixed(1)}" fill="${fill}"/>`);
         }
@@ -586,7 +585,7 @@ function draw(newSeed, opts) {
           const rx = baseR * w.sz * w.sx;
           const ry = baseR * w.sz * w.sy;
           ctx.save();
-          ctx.globalAlpha = Math.min(1, 0.25 + appear * 0.75);
+          ctx.globalAlpha = 1;
           ctx.translate(px, py);
           if (w.ang !== 0) ctx.rotate(w.ang);
           ctx.beginPath();
