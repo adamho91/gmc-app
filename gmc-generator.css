@@ -651,6 +651,21 @@
     color: #cccccc;
     cursor: pointer;
   }
+  #embed-modal .embed-toggle-row {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    color: #cccccc;
+    cursor: pointer;
+  }
+  #embed-modal .embed-toggle-row input {
+    width: auto;
+    accent-color: #5718C0;
+  }
   #embed-modal .embed-modal-row label {
     display: flex;
     flex-direction: column;

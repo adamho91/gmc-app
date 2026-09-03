@@ -136,6 +136,26 @@ function lerpColor(ca, cb, t) {
 // ── Main Draw ─────────────────────────────────────────────────────────────────
 let currentSeed = Date.now() & 0xFFFFFF;
 let animTime = 0;
+let embedFlowIn = false;
+const EMBED_FLOW_DUR = 0.78;
+const EMBED_FLOW_CLUMP = 5;
+const EMBED_FLOW_RISE = 0.22;
+
+function embedFlowAppear(col, row, bias, tNow, seed) {
+  if (!embedFlowIn) return 1;
+  const cx = Math.floor(col / EMBED_FLOW_CLUMP);
+  const cy = Math.floor(row / EMBED_FLOW_CLUMP);
+  const h = ((cx * 73856093) ^ (cy * 19349663) ^ ((seed | 0) * 83492791)) >>> 0;
+  const n = (h % 10000) / 10000;
+  const lx = col - cx * EMBED_FLOW_CLUMP;
+  const ly = row - cy * EMBED_FLOW_CLUMP;
+  const local = ((lx + ly * 0.65) / (EMBED_FLOW_CLUMP * 1.65)) * 0.07;
+  const start = (n * 0.52 + local + (bias || 0)) * EMBED_FLOW_DUR;
+  const t = ((tNow || 0) - start) / EMBED_FLOW_RISE;
+  if (t <= 0) return 0;
+  if (t >= 1) return 1;
+  return 1 - Math.pow(1 - t, 3);
+}
 const DEFAULT_CANVAS_WIDTH = 1440;
 const DEFAULT_CANVAS_HEIGHT = 1440;
 const CANVAS_DIM_MIN = 256;
@@ -431,15 +451,21 @@ function draw(newSeed, opts) {
   if (checkerGrid) {
     for (let row = 0; row < ROWS; row++) {
       for (let col = 0; col < COLS; col++) {
+        const appear = embedFlowAppear(col, row, 0, animTime, currentSeed);
+        if (appear <= 0.01) continue;
         const sc = cellScale[row * COLS + col];
         const fill = (row+col)%2===0 ? bgA : bgB;
         const nx = (col+0.5)/COLS, ny = (row+0.5)/ROWS;
         const { px, py } = compWarp(nx, ny);
-        const cw = CS * sc, ch = CS * sc;
+        const cw = CS * sc * appear, ch = CS * sc * appear;
         const x = px - cw/2, y = py - ch/2;
+        ctx.globalAlpha = Math.min(1, 0.35 + appear * 0.65);
         ctx.fillStyle = fill;
         ctx.fillRect(x, y, cw, ch);
-        svgEls.push(`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${cw.toFixed(1)}" height="${ch.toFixed(1)}" fill="${fill}"/>`);
+        ctx.globalAlpha = 1;
+        if (!embedFlowIn || appear >= 0.999) {
+          svgEls.push(`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${cw.toFixed(1)}" height="${ch.toFixed(1)}" fill="${fill}"/>`);
+        }
       }
     }
   }
@@ -525,8 +551,10 @@ function draw(newSeed, opts) {
   // ── 2. Draw halftone dot layers (skipped if node chains replace) ─────────
   if (metaMode !== 'replace') {
     ctx.globalCompositeOperation = 'source-over';
-    for (const unit of allUnits) {
+    const unitCount = Math.max(1, allUnits.length);
+    allUnits.forEach((unit, uIdx) => {
       const family = pal.families[unit.famIdx];
+      const unitBias = 0.1 + (uIdx / unitCount) * 0.38;
       const pad = unit.r * Math.max(unit.stretch, 1/unit.stretch) * 1.6;
       const c0 = Math.max(0, Math.floor((unit.cx-pad)*COLS));
       const c1 = Math.min(COLS-1, Math.ceil((unit.cx+pad)*COLS));
@@ -537,6 +565,8 @@ function draw(newSeed, opts) {
           const nx = (col+0.5)/COLS, ny = (row+0.5)/ROWS;
           const infl = unitInfluence(unit, nx, ny);
           if (infl < 0.006) continue;
+          const appear = embedFlowAppear(col, row, unitBias, animTime, currentSeed);
+          if (appear <= 0.02) continue;
           let baseR = CS*0.5*(dotMin+(dotMax-dotMin)*infl);
           // Oscillate dots in & out — a radial ripple emanating from the canvas
           // centre. dotOscWave controls how many concentric bands; speed sets the
@@ -548,6 +578,7 @@ function draw(newSeed, opts) {
             const oscMul = 1 + Math.sin(animTime * dotOscSpeed * 2.5 - phase) * dotOscAmt;
             baseR *= Math.max(0, oscMul);
           }
+          baseR *= appear;
           if (baseR < 0.4) continue;
           const fill = inflToColor(infl, family);
           const { px, py } = compWarp(nx, ny);
@@ -555,6 +586,7 @@ function draw(newSeed, opts) {
           const rx = baseR * w.sz * w.sx;
           const ry = baseR * w.sz * w.sy;
           ctx.save();
+          ctx.globalAlpha = Math.min(1, 0.25 + appear * 0.75);
           ctx.translate(px, py);
           if (w.ang !== 0) ctx.rotate(w.ang);
           ctx.beginPath();
@@ -562,15 +594,17 @@ function draw(newSeed, opts) {
           ctx.fillStyle = fill;
           ctx.fill();
           ctx.restore();
-          if (w.ang !== 0) {
-            const deg = (w.ang*180/Math.PI).toFixed(2);
-            svgEls.push(`<ellipse cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" rx="${rx.toFixed(2)}" ry="${ry.toFixed(2)}" transform="rotate(${deg},${px.toFixed(1)},${py.toFixed(1)})" fill="${fill}"/>`);
-          } else {
-            svgEls.push(`<ellipse cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" rx="${rx.toFixed(2)}" ry="${ry.toFixed(2)}" fill="${fill}"/>`);
+          if (!embedFlowIn || appear >= 0.999) {
+            if (w.ang !== 0) {
+              const deg = (w.ang*180/Math.PI).toFixed(2);
+              svgEls.push(`<ellipse cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" rx="${rx.toFixed(2)}" ry="${ry.toFixed(2)}" transform="rotate(${deg},${px.toFixed(1)},${py.toFixed(1)})" fill="${fill}"/>`);
+            } else {
+              svgEls.push(`<ellipse cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" rx="${rx.toFixed(2)}" ry="${ry.toFixed(2)}" fill="${fill}"/>`);
+            }
           }
         }
       }
-    }
+    });
   }
 
   // ── 2b. DR-style node chains ───────────────────────────────────────────────
@@ -1413,7 +1447,8 @@ function animFrame(now) {
                     parseFloat(document.getElementById('warpOscSpeed').value) > 0 &&
                     parseFloat(document.getElementById('warpOscAmt').value) > 0;
   const chainsMoving = mode !== 'off' && (drift > 0 || pulse > 0 || flow > 0);
-  if (chainsMoving || dotOscOn || warpOscOn) {
+  const introActive = embedFlowIn && animTime < EMBED_FLOW_DUR + EMBED_FLOW_RISE + 0.15;
+  if (chainsMoving || dotOscOn || warpOscOn || introActive) {
     animTime += dt;
     draw();
   }
@@ -1429,6 +1464,14 @@ function revealEmbedIfNeeded() {
 
 function bootGenerator() {
   const embedState = readEmbedConfigFromUrl();
+  try {
+    const params = new URLSearchParams(location.search);
+    embedFlowIn = document.documentElement.classList.contains('gmc-2d-embed') &&
+      (params.get('flow') === '1' || params.get('flow') === 'true');
+  } catch (_) {
+    embedFlowIn = false;
+  }
+  if (embedFlowIn) animTime = 0;
   if (embedState) {
     applyState(embedState);
     revealEmbedIfNeeded();

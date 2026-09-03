@@ -4,6 +4,9 @@
   const modal = document.getElementById('embed-modal');
   const hostInput = document.getElementById('embed-host');
   const hostField = document.getElementById('embed-host-field');
+  const sizeRow = document.getElementById('embed-size-row');
+  const fullscreenInput = document.getElementById('embed-fullscreen');
+  const flowInInput = document.getElementById('embed-flow-in');
   const widthInput = document.getElementById('embed-display-w');
   const heightInput = document.getElementById('embed-display-h');
   const status = document.getElementById('embed-status');
@@ -16,6 +19,8 @@
   const HOST_KEY = 'gmc-2d-embed-host';
   const SIZE_KEY = 'gmc-2d-embed-size';
   const MODE_KEY = 'gmc-2d-embed-mode';
+  const FULL_KEY = 'gmc-2d-embed-fullscreen';
+  const FLOW_KEY = 'gmc-2d-embed-flow-in';
 
   function setStatus(message) {
     if (status) status.textContent = message || '';
@@ -31,6 +36,14 @@
 
   function getEmbedMode() {
     return document.querySelector('input[name="embed-mode"]:checked')?.value || 'lite';
+  }
+
+  function isFullscreen() {
+    return !!fullscreenInput?.checked;
+  }
+
+  function isFlowIn() {
+    return !!flowInInput?.checked;
   }
 
   function detectHostUrl() {
@@ -68,9 +81,13 @@
 
   function syncModeUi() {
     const mode = getEmbedMode();
+    const full = isFullscreen();
     if (hostField) hostField.hidden = mode !== 'live';
+    if (sizeRow) sizeRow.hidden = full;
     try {
       localStorage.setItem(MODE_KEY, mode);
+      localStorage.setItem(FULL_KEY, full ? '1' : '0');
+      localStorage.setItem(FLOW_KEY, isFlowIn() ? '1' : '0');
     } catch (_) {}
   }
 
@@ -82,6 +99,12 @@
         const radio = document.querySelector(`input[name="embed-mode"][value="${mode}"]`);
         if (radio) radio.checked = true;
       }
+    } catch (_) {}
+    try {
+      if (fullscreenInput) fullscreenInput.checked = localStorage.getItem(FULL_KEY) === '1';
+    } catch (_) {}
+    try {
+      if (flowInInput) flowInInput.checked = localStorage.getItem(FLOW_KEY) === '1';
     } catch (_) {}
     try {
       const raw = localStorage.getItem(SIZE_KEY);
@@ -98,15 +121,30 @@
     syncModeUi();
   }
 
-  function buildPlayerUrl(host, payload) {
+  function buildPlayerUrl(host, payload, fullscreen, flowIn) {
     const base = String(host || '').replace(/\/+$/, '');
-    return `${base}/gmc-generator.html?embed=1&c=${encodeURIComponent(payload)}`;
+    const fill = fullscreen ? '&fill=1' : '';
+    const flow = flowIn ? '&flow=1' : '';
+    return `${base}/gmc-generator.html?embed=1${fill}${flow}&c=${encodeURIComponent(payload)}`;
   }
 
-  function buildIframeEmbed(payload, host, w, h) {
-    const src = buildPlayerUrl(host, payload);
+  function buildIframeEmbed(payload, host, w, h, fullscreen, flowIn) {
+    const src = buildPlayerUrl(host, payload, fullscreen, flowIn);
+    if (fullscreen) {
+      return `<!-- GMC Generator · live 2D · full browser screen${flowIn ? ' · flow-in' : ''} -->
+<!-- Player loads from ${host} -->
+<style>html,body{margin:0;padding:0;overflow:hidden;height:100%;}</style>
+<div class="gmc-2d-embed gmc-2d-embed--fullscreen" style="position:fixed;inset:0;width:100vw;height:100vh;margin:0;line-height:0;background:transparent;z-index:0">
+  <iframe
+    src="${src}"
+    title="GMC Generator"
+    style="position:absolute;inset:0;width:100%;height:100%;border:0;display:block;background:transparent"
+    allow="autoplay"
+  ></iframe>
+</div>`;
+    }
     const ratio = ((h / w) * 100).toFixed(4);
-    return `<!-- GMC Generator · live 2D · ${w}×${h} -->
+    return `<!-- GMC Generator · live 2D · ${w}×${h}${flowIn ? ' · flow-in' : ''} -->
 <!-- Player loads from ${host} -->
 <div class="gmc-2d-embed" style="width:100%;max-width:${w}px;margin:0 auto;position:relative;line-height:0;background:transparent">
   <div style="width:100%;padding-top:${ratio}%;pointer-events:none" aria-hidden="true"></div>
@@ -163,7 +201,7 @@
   }
 
   /** Self-contained canvas — checker + dots + meta animation (no iframe / full app). */
-  function buildLiteAnimationEmbed(state, w, h) {
+  function buildLiteAnimationEmbed(state, w, h, fullscreen, flowIn) {
     const seed = Number(state.seed) || 1;
     const cols = Math.max(4, Math.round(num(state, 'cols', 35)));
     const rows = Math.max(4, Math.round(num(state, 'rows', Math.round(cols * (h / w)))));
@@ -177,6 +215,8 @@
       h,
       cols,
       rows,
+      fullscreen: !!fullscreen,
+      flowIn: !!flowIn,
       bgA,
       bgB,
       families,
@@ -225,11 +265,21 @@
     };
 
     const cfgJson = JSON.stringify(cfg);
+    const sizeLabel = fullscreen ? 'full browser screen' : `${w}×${h}`;
+    const flowLabel = flowIn ? ' · flow-in' : '';
+    const wrapStyle = fullscreen
+      ? 'position:fixed;inset:0;width:100vw;height:100vh;margin:0;line-height:0;background:transparent;z-index:0'
+      : `width:100%;max-width:${w}px;margin:0 auto;position:relative;line-height:0;background:transparent`;
+    const canvasStyle = fullscreen
+      ? 'width:100%;height:100%;display:block;background:transparent'
+      : 'position:absolute;inset:0;width:100%;height:100%;display:block;background:transparent';
+    const aspectPad = fullscreen
+      ? ''
+      : `\n  <div style="width:100%;padding-top:${ratio}%;pointer-events:none" aria-hidden="true"></div>`;
 
-    return `<!-- GMC · lite field + animation · ${w}×${h} · self-contained -->
-<div class="gmc-lite" style="width:100%;max-width:${w}px;margin:0 auto;position:relative;line-height:0;background:transparent">
-  <div style="width:100%;padding-top:${ratio}%;pointer-events:none" aria-hidden="true"></div>
-  <canvas id="${uid}" width="${w}" height="${h}" style="position:absolute;inset:0;width:100%;height:100%;display:block;background:transparent"></canvas>
+    return `<!-- GMC · lite field + animation · ${sizeLabel}${flowLabel} · self-contained -->
+${fullscreen ? '<style>html,body{margin:0;padding:0;overflow:hidden;height:100%;}</style>\n' : ''}<div class="gmc-lite${fullscreen ? ' gmc-lite--fullscreen' : ''}" style="${wrapStyle}">${aspectPad}
+  <canvas id="${uid}" width="${w}" height="${h}" style="${canvasStyle}"></canvas>
 </div>
 <script>
 (function(){
@@ -238,6 +288,21 @@
   if(!canvas)return;
   var ctx=canvas.getContext("2d");
   var W=C.w,H=C.h,COLS=C.cols,ROWS=C.rows,CS=W/COLS,t0=performance.now();
+
+  function fit(){
+    if(!C.fullscreen)return;
+    var dpr=Math.min(2,window.devicePixelRatio||1);
+    var cw=Math.max(2,Math.floor(window.innerWidth*dpr/2)*2);
+    var ch=Math.max(2,Math.floor(window.innerHeight*dpr/2)*2);
+    if(cw===W&&ch===H)return;
+    canvas.width=cw;canvas.height=ch;
+    W=cw;H=ch;CS=W/COLS;
+    ROWS=Math.max(4,Math.round(H/CS));
+  }
+  fit();
+  if(C.fullscreen){
+    window.addEventListener("resize",fit);
+  }
 
   function xorshift(seed){
     var s=seed>>>0||1;
@@ -266,6 +331,25 @@
     if(m==="family_random")return fam[ri(0,fam.length-1)];
     if(m==="mix_deep"){var o=[0,3,4].filter(function(i){return i<fam.length;});return fam[o[ri(0,o.length-1)]];}
     return fam[Math.min(3,fam.length-1)];
+  }
+
+  /* Fast staggered clump reveal — checker first, then dots by blob clumps. */
+  var FLOW_DUR=0.78,FLOW_CLUMP=5,FLOW_RISE=0.22;
+  function clumpHash(cx,cy){
+    var h=((cx*73856093)^(cy*19349663)^(C.seed*83492791))>>>0;
+    return (h%10000)/10000;
+  }
+  function flowAppear(col,row,bias,tNow){
+    if(!C.flowIn)return 1;
+    var cx=Math.floor(col/FLOW_CLUMP),cy=Math.floor(row/FLOW_CLUMP);
+    var n=clumpHash(cx,cy);
+    var lx=col-cx*FLOW_CLUMP,ly=row-cy*FLOW_CLUMP;
+    var local=((lx+ly*0.65)/(FLOW_CLUMP*1.65))*0.07;
+    var start=(n*0.52+local+(bias||0))*FLOW_DUR;
+    var t=((tNow||0)-start)/FLOW_RISE;
+    if(t<=0)return 0;
+    if(t>=1)return 1;
+    return 1-Math.pow(1-t,3);
   }
 
   function frame(now){
@@ -345,18 +429,24 @@
       for(var row=0;row<ROWS;row++){
         for(var col=0;col<COLS;col++){
           var sc=C.checkerVar>0?Math.max(0.15,rr(1-C.checkerVar*0.7,1+C.checkerVar*0.7)):1;
+          var appear=flowAppear(col,row,0,time);
+          if(appear<=0.01)continue;
           var fill=(row+col)%2===0?C.bgA:C.bgB;
           var nx=(col+0.5)/COLS,ny=(row+0.5)/ROWS,p=compWarp(nx,ny);
-          var cw=CS*sc,ch=CS*sc;
+          var cw=CS*sc*appear,ch=CS*sc*appear;
+          ctx.globalAlpha=Math.min(1,0.35+appear*0.65);
           ctx.fillStyle=fill;
           ctx.fillRect(p.px-cw/2,p.py-ch/2,cw,ch);
         }
       }
+      ctx.globalAlpha=1;
     }
 
     if(C.metaMode!=="replace"){
+      var unitCount=Math.max(1,units.length);
       for(var u=0;u<units.length;u++){
         var unit=units[u],family=C.families[unit.famIdx];
+        var unitBias=0.1+(u/unitCount)*0.38;
         var pad=unit.r*Math.max(unit.stretch,1/unit.stretch)*1.6;
         var c0=Math.max(0,Math.floor((unit.cx-pad)*COLS));
         var c1=Math.min(COLS-1,Math.ceil((unit.cx+pad)*COLS));
@@ -367,17 +457,21 @@
             var nx2=(col2+0.5)/COLS,ny2=(row2+0.5)/ROWS;
             var infl=influence(unit,nx2,ny2);
             if(infl<0.006)continue;
+            var appearD=flowAppear(col2,row2,unitBias,time);
+            if(appearD<=0.02)continue;
             var baseR=CS*0.5*(C.dotMin+(C.dotMax-C.dotMin)*infl);
             if(C.dotOsc&&C.dotOscAmt>0){
               var rdx=nx2-0.5,rdy=ny2-0.5,rdist=Math.sqrt(rdx*rdx+rdy*rdy);
               var osc=1+Math.sin(time*C.dotOscSpeed*2.5-rdist*C.dotOscWave*Math.PI*2)*C.dotOscAmt;
               baseR*=Math.max(0,osc);
             }
+            baseR*=appearD;
             if(baseR<0.4)continue;
             var fill2=inflColor(infl,family);
             var pw=compWarp(nx2,ny2),wv=warpAt(nx2,ny2);
             var rx=baseR*wv.sz*wv.sx,ry=baseR*wv.sz*wv.sy;
             ctx.save();
+            ctx.globalAlpha=Math.min(1,0.25+appearD*0.75);
             ctx.translate(pw.px,pw.py);
             if(wv.ang)ctx.rotate(wv.ang);
             ctx.beginPath();
@@ -388,13 +482,17 @@
           }
         }
       }
+      ctx.globalAlpha=1;
     }
 
     if(C.metaMode!=="off"&&C.chains>0){
       var crand=xorshift(C.seed^0xDEAD);
       function crr(a,b){return a+crand()*(b-a);}
       function cri(a,b){return Math.floor(crr(a,b+0.9999));}
-      ctx.globalAlpha=C.opacity;
+      var metaAppear=C.flowIn?Math.max(0,Math.min(1,(time-FLOW_DUR*0.55)/0.28)):1;
+      metaAppear=metaAppear<=0?0:(metaAppear>=1?1:1-Math.pow(1-metaAppear,3));
+      if(metaAppear>0.01){
+      ctx.globalAlpha=C.opacity*metaAppear;
       for(var ch=0;ch<C.chains;ch++){
         var fam;
         if(C.metaColor==="single")fam=C.families[0];
@@ -411,7 +509,7 @@
           var phase=crr(0,Math.PI*2);
           var r=C.size*W*(1+crr(-C.sVar*0.6,C.sVar*0.8));
           if(C.pulse>0)r*=1+Math.sin(time*C.pulse*2.2+phase)*0.16;
-          r=Math.max(2,r);
+          r=Math.max(2,r)*metaAppear;
           var isRing=crand()<C.ring;
           var px=x,py=y;
           if(C.drift>0){
@@ -443,6 +541,7 @@
           y=Math.max(edge,Math.min(H-edge,y));
         }
       }
+      }
       ctx.globalAlpha=1;
     }
   }
@@ -457,12 +556,17 @@
       return;
     }
     const mode = getEmbedMode();
+    const full = isFullscreen();
+    const flow = isFlowIn();
     const { w, h } = readDisplaySize();
     const state = captureState();
+    const flowNote = flow ? ' · flow-in' : '';
 
     if (mode === 'lite') {
-      textArea.value = buildLiteAnimationEmbed(state, w, h);
-      setStatus(`Lite field + animation · ${w}×${h} · self-contained (no host URL)`);
+      textArea.value = buildLiteAnimationEmbed(state, w, h, full, flow);
+      setStatus(full
+        ? `Lite field + animation · full browser screen${flowNote} · self-contained (no host URL)`
+        : `Lite field + animation · ${w}×${h}${flowNote} · self-contained (no host URL)`);
       return;
     }
 
@@ -481,8 +585,10 @@
 
     rememberHost(host);
     const payload = encodeConfig(state);
-    textArea.value = buildIframeEmbed(payload, host, w, h);
-    setStatus(`Live player · ${w}×${h} · paste into an HTML embed`);
+    textArea.value = buildIframeEmbed(payload, host, w, h, full, flow);
+    setStatus(full
+      ? `Live player · full browser screen${flowNote} · paste into an HTML embed`
+      : `Live player · ${w}×${h}${flowNote} · paste into an HTML embed`);
   }
 
   function openModal() {
@@ -506,6 +612,14 @@
   });
   widthInput?.addEventListener('change', generate);
   heightInput?.addEventListener('change', generate);
+  fullscreenInput?.addEventListener('change', () => {
+    syncModeUi();
+    generate();
+  });
+  flowInInput?.addEventListener('change', () => {
+    syncModeUi();
+    generate();
+  });
   document.querySelectorAll('input[name="embed-mode"]').forEach((el) => {
     el.addEventListener('change', () => {
       syncModeUi();

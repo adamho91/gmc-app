@@ -433,12 +433,26 @@
       <label><input type="radio" name="embed-mode" value="lite" checked /> Lite animation</label>
       <label><input type="radio" name="embed-mode" value="live" /> Live player (iframe)</label>
     </div>
+    <div class="embed-modal-field">
+      <label class="embed-toggle-row" for="embed-fullscreen">
+        <span>Full browser screen</span>
+        <input type="checkbox" id="embed-fullscreen" />
+      </label>
+      <p class="embed-modal-hint">Fills the viewport (100vw × 100vh). Best for full-page / Webflow fullscreen embeds.</p>
+    </div>
+    <div class="embed-modal-field">
+      <label class="embed-toggle-row" for="embed-flow-in">
+        <span>Flow in field</span>
+        <input type="checkbox" id="embed-flow-in" />
+      </label>
+      <p class="embed-modal-hint">Checker + dots pop in as fast staggered clumps on load.</p>
+    </div>
     <div class="embed-modal-field" id="embed-host-field" hidden>
       <label for="embed-host">Player base URL</label>
       <input type="url" id="embed-host" placeholder="Auto-detected when app is hosted online" autocomplete="off" spellcheck="false" />
       <p class="embed-modal-hint">Must be where the app is hosted (e.g. Vercel) — not Webflow. Auto-fills over https://.</p>
     </div>
-    <div class="embed-modal-field embed-modal-row">
+    <div class="embed-modal-field embed-modal-row" id="embed-size-row">
       <label>Display width
         <input type="number" id="embed-display-w" min="200" max="2400" step="10" value="800" />
       </label>
