@@ -427,9 +427,13 @@
 
 <div id="embed-modal" aria-hidden="true">
   <div class="embed-modal-panel" role="dialog" aria-labelledby="embed-modal-title">
-    <div class="embed-modal-title" id="embed-modal-title">Embed live 2D player</div>
-    <p class="embed-modal-hint">Paste into Webflow → Embed (or any HTML page). The iframe loads this pattern from your hosted app URL.</p>
-    <div class="embed-modal-field">
+    <div class="embed-modal-title" id="embed-modal-title">Embed 2D</div>
+    <p class="embed-modal-hint">Lite = self-contained node animation. Live = full pattern via hosted iframe.</p>
+    <div class="embed-modal-field embed-mode-row">
+      <label><input type="radio" name="embed-mode" value="lite" checked /> Lite animation</label>
+      <label><input type="radio" name="embed-mode" value="live" /> Live player (iframe)</label>
+    </div>
+    <div class="embed-modal-field" id="embed-host-field" hidden>
       <label for="embed-host">Player base URL</label>
       <input type="url" id="embed-host" placeholder="Auto-detected when app is hosted online" autocomplete="off" spellcheck="false" />
       <p class="embed-modal-hint">Must be where the app is hosted (e.g. Vercel) — not Webflow. Auto-fills over https://.</p>

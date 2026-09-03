@@ -638,6 +638,19 @@
     grid-template-columns: 1fr 1fr;
     gap: 8px;
   }
+  #embed-modal .embed-mode-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 16px;
+  }
+  #embed-modal .embed-mode-row label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    color: #cccccc;
+    cursor: pointer;
+  }
   #embed-modal .embed-modal-row label {
     display: flex;
     flex-direction: column;
