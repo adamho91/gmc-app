@@ -1461,6 +1461,54 @@ function revealEmbedIfNeeded() {
   root.classList.add('gmc-2d-embed-ready');
 }
 
+function isLiveEmbedFill() {
+  try {
+    return new URLSearchParams(location.search).get('fill') === '1';
+  } catch (_) {
+    return false;
+  }
+}
+
+function syncLiveEmbedViewport() {
+  if (!document.documentElement.classList.contains('gmc-2d-embed')) return false;
+  if (!isLiveEmbedFill()) return false;
+  document.documentElement.classList.add('gmc-2d-embed-fill');
+  const area = document.getElementById('canvas-area');
+  const vv = window.visualViewport;
+  const cssW = Math.max(1, Math.floor((vv && vv.width) || area?.clientWidth || window.innerWidth || 1));
+  const cssH = Math.max(1, Math.floor((vv && vv.height) || area?.clientHeight || window.innerHeight || 1));
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const w = clampCanvasDimension(Math.floor(cssW * dpr / 2) * 2);
+  const h = clampCanvasDimension(Math.floor(cssH * dpr / 2) * 2);
+  const widthInput = document.getElementById('canvasWidth');
+  const heightInput = document.getElementById('canvasHeight');
+  if (!widthInput || !heightInput) return false;
+  if (Number(widthInput.value) === w && Number(heightInput.value) === h && canvas.width === w && canvas.height === h) {
+    return false;
+  }
+  widthInput.value = String(w);
+  heightInput.value = String(h);
+  setCanvasDimensionLabel('v-canvas-width', w);
+  setCanvasDimensionLabel('v-canvas-height', h);
+  draw(currentSeed);
+  return true;
+}
+
+function wireLiveEmbedViewport() {
+  if (!document.documentElement.classList.contains('gmc-2d-embed')) return;
+  const run = () => {
+    try { syncLiveEmbedViewport(); } catch (err) { console.warn(err); }
+  };
+  run();
+  window.addEventListener('resize', run);
+  window.visualViewport?.addEventListener('resize', run);
+  window.visualViewport?.addEventListener('scroll', run);
+  const area = document.getElementById('canvas-area');
+  if (area && typeof ResizeObserver !== 'undefined') {
+    try { new ResizeObserver(run).observe(area); } catch (_) {}
+  }
+}
+
 function bootGenerator() {
   const embedState = readEmbedConfigFromUrl();
   try {
@@ -1473,10 +1521,12 @@ function bootGenerator() {
   if (embedFlowIn) animTime = 0;
   if (embedState) {
     applyState(embedState);
+    wireLiveEmbedViewport();
     revealEmbedIfNeeded();
     return;
   }
   if (restoreState()) {
+    wireLiveEmbedViewport();
     revealEmbedIfNeeded();
     return;
   }
@@ -1488,10 +1538,12 @@ function bootGenerator() {
     if (input) input.value = defName;
     applyState(defState);
     renderPresetList();
+    wireLiveEmbedViewport();
     revealEmbedIfNeeded();
     return;
   }
   draw(currentSeed);
+  wireLiveEmbedViewport();
   revealEmbedIfNeeded();
 }
 

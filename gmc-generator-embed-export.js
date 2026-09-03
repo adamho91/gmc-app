@@ -145,7 +145,7 @@
     if (fullscreen) {
       return `<!-- GMC Generator · live 2D · full browser screen${flowIn ? ' · flow-in' : ''} -->
 <!-- Player loads from ${host} -->
-<div class="gmc-2d-embed gmc-2d-embed--fullscreen" style="position:fixed;inset:0;width:100vw;height:100vh;margin:0;line-height:0;background:transparent;z-index:0;pointer-events:none" aria-hidden="true">
+<div class="gmc-2d-embed gmc-2d-embed--fullscreen" style="position:fixed;inset:0;width:100%;height:100%;margin:0;line-height:0;background:transparent;z-index:0;pointer-events:none" aria-hidden="true">
   <iframe
     src="${src}"
     title="GMC Generator"
@@ -158,7 +158,7 @@
     const ratio = ((h / w) * 100).toFixed(4);
     return `<!-- GMC Generator · live 2D · ${w}×${h}${flowIn ? ' · flow-in' : ''} -->
 <!-- Player loads from ${host} -->
-<div class="gmc-2d-embed" style="width:100%;max-width:${w}px;margin:0 auto;position:relative;line-height:0;background:transparent">
+<div class="gmc-2d-embed" style="width:100%;max-width:${w}px;margin:0 auto;position:relative;line-height:0;background:transparent;aspect-ratio:${w} / ${h}">
   <div style="width:100%;padding-top:${ratio}%;pointer-events:none" aria-hidden="true"></div>
   <iframe
     src="${src}"
@@ -294,11 +294,11 @@
     const flowLabel = flowIn ? ' · flow-in' : '';
     const randomLabel = randomOnLoad ? ' · randomize' : '';
     const wrapStyle = fullscreen
-      ? 'position:fixed;inset:0;width:100vw;height:100vh;margin:0;line-height:0;background:transparent;z-index:0;pointer-events:none'
-      : `width:100%;max-width:${w}px;margin:0 auto;position:relative;line-height:0;background:transparent`;
+      ? 'position:fixed;inset:0;width:100%;height:100%;max-width:100%;max-height:100%;margin:0;line-height:0;background:transparent;z-index:0;pointer-events:none;overflow:hidden'
+      : `width:100%;max-width:${w}px;margin:0 auto;position:relative;line-height:0;background:transparent;aspect-ratio:${w} / ${h}`;
     const canvasStyle = fullscreen
-      ? 'width:100%;height:100%;display:block;background:transparent;pointer-events:none'
-      : 'position:absolute;inset:0;width:100%;height:100%;display:block;background:transparent';
+      ? 'display:block;background:transparent;pointer-events:none;position:absolute;left:0;top:0'
+      : 'position:absolute;inset:0;width:100%;height:100%;display:block;background:transparent;object-fit:contain';
     const aspectPad = fullscreen
       ? ''
       : `\n  <div style="width:100%;padding-top:${ratio}%;pointer-events:none" aria-hidden="true"></div>`;
@@ -323,20 +323,58 @@
     C.families=pool.slice(0,Math.min(6,pool.length));
   }
   var W=C.w,H=C.h,COLS=C.cols,ROWS=C.rows,CS=W/COLS,t0=performance.now();
+  var designAspect=(C.w>0&&C.h>0)?(C.w/C.h):1;
+
+  function viewportSize(){
+    var vv=window.visualViewport;
+    var cssW=Math.max(1,Math.floor((vv&&vv.width)||window.innerWidth||1));
+    var cssH=Math.max(1,Math.floor((vv&&vv.height)||window.innerHeight||1));
+    return{cssW:cssW,cssH:cssH};
+  }
 
   function fit(){
-    if(!C.fullscreen)return;
     var dpr=Math.min(2,window.devicePixelRatio||1);
-    var cw=Math.max(2,Math.floor(window.innerWidth*dpr/2)*2);
-    var ch=Math.max(2,Math.floor(window.innerHeight*dpr/2)*2);
+    var cssW,cssH,cw,ch;
+    if(C.fullscreen){
+      var vp=viewportSize();
+      cssW=vp.cssW;cssH=vp.cssH;
+      cw=Math.max(2,Math.floor(cssW*dpr/2)*2);
+      ch=Math.max(2,Math.floor(cssH*dpr/2)*2);
+      canvas.style.width=cssW+"px";
+      canvas.style.height=cssH+"px";
+      canvas.style.transform="translateZ(0)";
+    }else{
+      var parent=canvas.parentElement;
+      var rect=parent?parent.getBoundingClientRect():null;
+      cssW=Math.max(1,Math.floor((rect&&rect.width)||C.w));
+      cssH=Math.max(1,Math.floor((rect&&rect.height)||C.h));
+      /* Contain design aspect inside the box — never stretch. */
+      var boxAspect=cssW/Math.max(1,cssH);
+      var dispW,dispH;
+      if(boxAspect>designAspect){dispH=cssH;dispW=Math.max(1,Math.floor(cssH*designAspect));}
+      else{dispW=cssW;dispH=Math.max(1,Math.floor(cssW/Math.max(0.0001,designAspect)));}
+      cw=Math.max(2,Math.floor(dispW*dpr/2)*2);
+      ch=Math.max(2,Math.floor(dispH*dpr/2)*2);
+      canvas.style.width=dispW+"px";
+      canvas.style.height=dispH+"px";
+      canvas.style.left=((cssW-dispW)/2)+"px";
+      canvas.style.top=((cssH-dispH)/2)+"px";
+      canvas.style.right="auto";
+      canvas.style.bottom="auto";
+    }
     if(cw===W&&ch===H)return;
     canvas.width=cw;canvas.height=ch;
     W=cw;H=ch;CS=W/COLS;
     ROWS=Math.max(4,Math.round(H/CS));
   }
   fit();
-  if(C.fullscreen){
-    window.addEventListener("resize",fit);
+  window.addEventListener("resize",fit);
+  if(window.visualViewport){
+    window.visualViewport.addEventListener("resize",fit);
+    window.visualViewport.addEventListener("scroll",fit);
+  }
+  if(typeof ResizeObserver!=="undefined"&&canvas.parentElement){
+    try{new ResizeObserver(fit).observe(canvas.parentElement);}catch(_){}
   }
 
   function xorshift(seed){
