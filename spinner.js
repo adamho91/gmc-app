@@ -1310,6 +1310,31 @@ function layoutMetrics(w, h) {
   return { cx, cy, rad };
 }
 
+function projectedLimbRadius() {
+  const R = STATE.sphereR * 220;
+  const denomSq = STATE.camZ * STATE.camZ - R * R;
+  if (denomSq <= 0) return 0;
+  const limb = (STATE.focal * R) / Math.sqrt(denomSq);
+  return Number.isFinite(limb) && limb > 0 ? limb : 0;
+}
+
+/** Fraction of the sphere disk filled by the projected field (preview spaciness). */
+function computeFieldFill(w, h) {
+  const { rad } = layoutMetrics(w, h);
+  const limb = projectedLimbRadius();
+  if (!rad || !limb) return 1;
+  const scale = Math.min(1, rad / limb);
+  return (limb * scale) / rad;
+}
+
+function capturePreviewFieldFill() {
+  const wrap = document.getElementById("canvas-wrap");
+  const w = wrap?.clientWidth || pInst?.width || 800;
+  const h = wrap?.clientHeight || pInst?.height || 600;
+  const fill = computeFieldFill(w, h);
+  return Number.isFinite(fill) && fill > 0 ? Math.min(1, fill) : 1;
+}
+
 function shouldApplyViewportLayoutScale() {
   return true;
 }
@@ -1317,15 +1342,15 @@ function shouldApplyViewportLayoutScale() {
 function getViewportLayoutScale(w, h) {
   const { rad } = layoutMetrics(w, h);
   if (!Number.isFinite(rad) || rad <= 0) return 1;
-  /* Projected sphere limb radius in px (fixed by lens, independent of viewport). */
-  const R = STATE.sphereR * 220;
-  const denomSq = STATE.camZ * STATE.camZ - R * R;
-  if (denomSq <= 0) return 1;
-  const limb = (STATE.focal * R) / Math.sqrt(denomSq);
-  if (!Number.isFinite(limb) || limb <= 0) return 1;
+  const limb = projectedLimbRadius();
+  if (!limb) return 1;
   const scale = rad / limb;
   /* Live view: only shrink so the sphere fits. Export: also enlarge so 4K fills the frame. */
   if (exportMode && !exportMode.liveEmbed) return scale;
+  /* Live embed: preserve the preview's field-to-sphere fill so spaciness matches. */
+  if (exportMode?.liveEmbed && Number.isFinite(exportMode.fieldFill) && exportMode.fieldFill > 0) {
+    return (Math.min(1, exportMode.fieldFill) * rad) / limb;
+  }
   return Math.min(1, scale);
 }
 
@@ -2980,7 +3005,7 @@ function beginExport({ width, height, transparentBg = false, background, sphereP
 }
 
 /** Live site embed — preset playback (spin speed, echo, displacement); export timing not used. */
-function beginEmbedDisplay({ width, height, background }) {
+function beginEmbedDisplay({ width, height, background, fieldFill }) {
   const { canvasBg, sphere } = readEmbedBackground(background);
   const snapshot = {
     playing: STATE.playing,
@@ -2996,6 +3021,8 @@ function beginEmbedDisplay({ width, height, background }) {
     transparentBg: !!canvasBg.transparent,
     exportBgColor: canvasBg.color || "#ffffff",
     sphereInterior: sphere,
+    fieldFill:
+      Number.isFinite(fieldFill) && fieldFill > 0 ? Math.min(1, fieldFill) : undefined,
   };
   if (pInst) pInst.resizeCanvas(width, height);
   return snapshot;
@@ -3323,6 +3350,7 @@ function startEmbedLoop(exportOpts) {
     width: container.width,
     height: container.height,
     background: background || { transparent: false, color: "#ffffff" },
+    fieldFill: exportOpts.fieldFill,
   });
 
   startEmbedLayoutWatch();
@@ -3332,11 +3360,16 @@ function startEmbedLoop(exportOpts) {
 }
 
 function captureEmbedConfig(exportOpts) {
+  const fieldFill = capturePreviewFieldFill();
   return {
     v: 1,
     preset: collectPresetBody(),
     vas: typeof window.Vasarely?.captureLocalSnapshot === "function" ? window.Vasarely.captureLocalSnapshot() : null,
-    export: exportOpts,
+    export: {
+      ...(exportOpts || {}),
+      fieldFill,
+    },
+    fieldFill,
     randomPaletteOnLoad: !!document.getElementById("export-embed-random-palette")?.checked,
   };
 }
