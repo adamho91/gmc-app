@@ -1153,6 +1153,7 @@
     applyLocalSnapshot,
     getSeed: () => currentSeed,
     setSeed: (s) => draw(s),
+    getPaletteIds: () => FAL_PALETTE_META.map((m) => m.id),
     /** Full SVG document string (same coordinate system as viewBox). */
     getSVGDocument: () => {
       const vb = svg.getAttribute("viewBox") || "0 0 1 1";

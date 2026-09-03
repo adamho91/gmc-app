@@ -557,15 +557,17 @@
           const hostNote = result.hostPlaceholder
             ? ` · replace YOUR-GMC-HOST in the code`
             : ` · player at ${result.hostUrl}`;
-          status.textContent = `Ready — ${result.chars.toLocaleString()} chars · paste into Webflow Embed${hostNote} · ${result.displayW}×${result.displayH}`;
+          const palNote = $("export-embed-random-palette")?.checked ? " · randomize palette" : "";
+          status.textContent = `Ready — ${result.chars.toLocaleString()} chars · paste into Webflow Embed${hostNote}${palNote} · ${result.displayW}×${result.displayH}`;
         }
       } else {
         ta.value = generateLoopEmbedCode();
         const info = embedCodeModeLabel();
         const size = `${o.width}×${o.height}`;
+        const palNote = $("export-embed-random-palette")?.checked ? " · randomize palette" : "";
         if (status) {
           if (info.mode === "hosted") {
-            status.textContent = `Ready — live iframe from ${info.hostUrl} · ${size}`;
+            status.textContent = `Ready — live iframe from ${info.hostUrl} · ${size}${palNote}`;
           } else {
             status.textContent = `Set Custom player URL (hosted app), then Regenerate · ${size}`;
           }
@@ -1479,6 +1481,9 @@
       el.addEventListener("change", () => {
         showEmbedModal().catch((err) => console.warn(err));
       });
+    });
+    $("export-embed-random-palette")?.addEventListener("change", () => {
+      showEmbedModal().catch((err) => console.warn(err));
     });
     $("export-embed-host")?.addEventListener("change", () => {
       const v = readEmbedHostUrl();

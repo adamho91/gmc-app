@@ -3212,7 +3212,20 @@ async function bootEmbedFromConfig(config) {
     }
   }
 
-  if (config.vas) window.Vasarely?.applyLocalSnapshot?.(config.vas);
+  if (config.vas) {
+    if (config.randomPaletteOnLoad && typeof window.Vasarely?.getPaletteIds === "function") {
+      const ids = window.Vasarely.getPaletteIds().filter(Boolean);
+      if (ids.length) {
+        const current = config.vas["vaz-palette"];
+        const pool = ids.length > 1 ? ids.filter((id) => id !== current) : ids;
+        config.vas = {
+          ...config.vas,
+          "vaz-palette": pool[(Math.random() * pool.length) | 0],
+        };
+      }
+    }
+    window.Vasarely?.applyLocalSnapshot?.(config.vas);
+  }
 
   const bg = config.export?.background;
   if (bg) {
@@ -3324,6 +3337,7 @@ function captureEmbedConfig(exportOpts) {
     preset: collectPresetBody(),
     vas: typeof window.Vasarely?.captureLocalSnapshot === "function" ? window.Vasarely.captureLocalSnapshot() : null,
     export: exportOpts,
+    randomPaletteOnLoad: !!document.getElementById("export-embed-random-palette")?.checked,
   };
 }
 

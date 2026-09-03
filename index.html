@@ -885,6 +885,19 @@
       letter-spacing: 0;
     }
     .export-embed-mode input { accent-color: #5718C0; }
+    .export-embed-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin: 4px 0 2px;
+      font-size: 9px;
+      color: #ccc;
+      cursor: pointer;
+      text-transform: none;
+      letter-spacing: 0;
+    }
+    .export-embed-toggle input { accent-color: #5718C0; width: auto; }
     #export-embed-modal .export-embed-actions {
       display: flex;
       gap: 6px;
@@ -1877,6 +1890,11 @@
             <label><input type="radio" name="export-embed-mode" value="inline" checked /> Procedural (Webflow)</label>
             <label><input type="radio" name="export-embed-mode" value="iframe" /> Live iframe</label>
           </div>
+          <label class="export-embed-toggle" for="export-embed-random-palette">
+            <span>Randomize palette on refresh</span>
+            <input type="checkbox" id="export-embed-random-palette" />
+          </label>
+          <p class="hint">Keeps the same node layout; picks a new fal color palette each page load.</p>
           <p class="hint" id="export-embed-hint">Uses preset spin speed and playback. Duration, fps, and rotations apply only to Lottie/MP4.</p>
           <details class="export-embed-advanced">
             <summary>Live iframe options</summary>
