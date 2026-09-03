@@ -563,18 +563,48 @@
     setTimeout(() => URL.revokeObjectURL(url), 30_000);
   }
 
-  /** Pixel size for high-res video frames (0 = live canvas). Cap keeps encoders stable. */
-  function resolveExportPx(targetPx) {
+  function readCanvasAspect() {
+    const widthInput = document.getElementById('canvasWidth');
+    const heightInput = document.getElementById('canvasHeight');
+    const sourceCanvas = document.getElementById('c');
+    const w = Math.max(2, Number(widthInput?.value) || sourceCanvas?.width || 1440);
+    const h = Math.max(2, Number(heightInput?.value) || sourceCanvas?.height || w);
+    return { width: w, height: h };
+  }
+
+  /** Export dimensions for video frames (0 = live canvas). Preserve the current canvas aspect. */
+  function resolveExportSize(targetPx) {
     const MAX_EXPORT_PX = 4096;
-    if (targetPx > 0) return evenDimension(Math.min(MAX_EXPORT_PX, targetPx));
+    if (targetPx > 0) {
+      const aspect = readCanvasAspect();
+      const longest = Math.max(aspect.width, aspect.height);
+      const scale = longest > 0 ? Math.min(1, MAX_EXPORT_PX / longest) * (Math.min(MAX_EXPORT_PX, targetPx) / longest) : 1;
+      const width = evenDimension(aspect.width * scale);
+      const height = evenDimension(aspect.height * scale);
+      return {
+        width: Math.max(2, width),
+        height: Math.max(2, height),
+      };
+    }
     const sourceCanvas = document.getElementById('c');
     const liveW = sourceCanvas?.width || 0;
     const liveH = sourceCanvas?.height || 0;
-    const livePx = Math.max(liveW, liveH);
-    if (livePx > 0) return evenDimension(Math.min(MAX_EXPORT_PX, livePx));
+    if (liveW > 0 && liveH > 0) {
+      const scale = Math.min(1, MAX_EXPORT_PX / Math.max(liveW, liveH));
+      return {
+        width: evenDimension(liveW * scale),
+        height: evenDimension(liveH * scale),
+      };
+    }
     const cols = Math.max(1, parseInt(document.getElementById('cols')?.value, 10) || 40);
-    const cell = parseInt(document.getElementById('cellSize')?.value, 10) || 36;
-    return evenDimension(Math.min(MAX_EXPORT_PX, cols * cell));
+    const aspect = readCanvasAspect();
+    const longest = Math.max(aspect.width, aspect.height, 1);
+    const fallbackLongest = cols * (parseInt(document.getElementById('cellSize')?.value, 10) || 36);
+    const scale = fallbackLongest > 0 ? Math.min(1, MAX_EXPORT_PX / fallbackLongest) : 1;
+    return {
+      width: evenDimension(aspect.width * scale),
+      height: evenDimension(aspect.height * scale),
+    };
   }
 
   function mp4PhaseLabel(phase, detail) {
@@ -593,8 +623,9 @@
     if (!sourceCanvas) throw new Error('2D canvas is unavailable.');
 
     const originalTime = animTime;
-    const drawOpts = targetPx > 0 ? { exportPx: resolveExportPx(targetPx) } : undefined;
-    const sizeLabel = drawOpts?.exportPx || 'live';
+    const exportSize = resolveExportSize(targetPx);
+    const drawOpts = targetPx > 0 ? { exportWidth: exportSize.width, exportHeight: exportSize.height } : undefined;
+    const sizeLabel = targetPx > 0 ? `${exportSize.width}×${exportSize.height}` : 'live';
     const totalFrames = Math.max(1, Math.round(duration * fps));
     const frameDurationUs = Math.round(1_000_000 / fps);
     const formatLabel = format === 'webm' ? 'WebM' : 'MP4';
@@ -605,7 +636,7 @@
     setProgress(1);
 
     try {
-      setStatus(`Preparing ${formatLabel} · ${sizeLabel}${drawOpts ? 'px' : ''}…`, 4);
+      setStatus(`Preparing ${formatLabel} · ${sizeLabel}…`, 4);
       await nextPaint();
       await nextPaint();
       draw(currentSeed, drawOpts);

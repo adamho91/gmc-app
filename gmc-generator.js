@@ -136,10 +136,33 @@ function lerpColor(ca, cb, t) {
 // ── Main Draw ─────────────────────────────────────────────────────────────────
 let currentSeed = Date.now() & 0xFFFFFF;
 let animTime = 0;
+let embedUrlFlowIn = false;
 let embedFlowIn = false;
 const EMBED_FLOW_DUR = 0.78;
 const EMBED_FLOW_CLUMP = 5;
 const EMBED_FLOW_RISE = 0.22;
+
+function syncFlowInFlag() {
+  embedFlowIn = !!document.getElementById('flowIn')?.checked || embedUrlFlowIn;
+  return embedFlowIn;
+}
+
+function restartFlowIn() {
+  if (!syncFlowInFlag()) return;
+  animTime = 0;
+  _animLast = null;
+}
+
+function flowEase01(t) {
+  if (t <= 0) return 0;
+  if (t >= 1) return 1;
+  return 1 - Math.pow(1 - t, 3);
+}
+
+function flowLayerAppear(delayFrac, rise = 0.3) {
+  if (!embedFlowIn) return 1;
+  return flowEase01((animTime - EMBED_FLOW_DUR * delayFrac) / rise);
+}
 
 function embedFlowAppear(col, row, bias, tNow, seed) {
   if (!embedFlowIn) return 1;
@@ -210,12 +233,21 @@ function resolveCanvasMetrics(cols, cellSize, opts) {
   const rowsControl = readRowsControl(cols);
   let requestedW = clampCanvasDimension(widthInput?.value || (cols * cellSize), DEFAULT_CANVAS_WIDTH);
   let requestedH = clampCanvasDimension(heightInput?.value || (rowsControl * cellSize), DEFAULT_CANVAS_HEIGHT);
+  const exportWidth = opts && Number(opts.exportWidth);
+  const exportHeight = opts && Number(opts.exportHeight);
   const exportPx = opts && Number(opts.exportPx);
-  const exportMode = Number.isFinite(exportPx) && exportPx > 0;
+  const exportMode =
+    (Number.isFinite(exportWidth) && exportWidth > 0 && Number.isFinite(exportHeight) && exportHeight > 0)
+    || (Number.isFinite(exportPx) && exportPx > 0);
   const primitiveLock = !exportMode && document.getElementById('canvasPrimitiveLock')?.checked !== false;
   if (exportMode) {
-    requestedW = Math.max(1, Math.round(exportPx));
-    requestedH = Math.max(1, Math.round(exportPx));
+    if (Number.isFinite(exportWidth) && exportWidth > 0 && Number.isFinite(exportHeight) && exportHeight > 0) {
+      requestedW = Math.max(1, Math.round(exportWidth));
+      requestedH = Math.max(1, Math.round(exportHeight));
+    } else {
+      requestedW = Math.max(1, Math.round(exportPx));
+      requestedH = Math.max(1, Math.round(exportPx));
+    }
   }
 
   const rawCell = requestedW / cols;
@@ -223,7 +255,7 @@ function resolveCanvasMetrics(cols, cellSize, opts) {
   const W = primitiveLock ? cols * cell : requestedW;
   let rows;
   if (exportMode) {
-    /* Square export fills the frame from column density; never mutate UI sliders. */
+    /* Video export can be rectangular; derive rows from the requested export height. */
     rows = Math.max(1, Math.min(MAX_GRID_AXIS, Math.round(requestedH / cell)));
   } else if (primitiveLock) {
     rows = rowsControl;
@@ -251,6 +283,7 @@ function normalizeCanvasDimensionInputs() {
 
 function draw(newSeed, opts) {
   if (newSeed !== undefined) currentSeed = newSeed;
+  syncFlowInFlag();
   seedRng(currentSeed);
 
   // Read all controls
@@ -611,9 +644,10 @@ function draw(newSeed, opts) {
   // Circles vary in size. Some are filled, some are rings (hollow). Connectors
   // are rectangles bridging the gap between adjacent node edges — exactly the
   // Designers Republic / TDR visual language.
-  if (metaMode !== 'off') {
+  const metaAppear = flowLayerAppear(0.55, 0.28);
+  if (metaMode !== 'off' && metaAppear > 0.01) {
     ctx.globalCompositeOperation = 'source-over';
-    ctx.globalAlpha = metaOpacity;
+    ctx.globalAlpha = metaOpacity * metaAppear;
 
     // SVG collector for node chains — the whole layer shares metaOpacity via a <g>.
     // Animation (drift/pulse/flow) bakes into whatever the current frame is, so
@@ -658,7 +692,7 @@ function draw(newSeed, opts) {
         const baseSize = metaSize * W;
         let r = baseSize * (1 + crr(-metaSVar*0.6, metaSVar*0.8));
         if (metaPulse > 0) r *= 1 + Math.sin(animTime * metaPulse * 2.2 + phase) * 0.16;
-        r = Math.max(2, r);
+        r = Math.max(2, r) * Math.max(0.001, metaAppear);
         // Decide: ring or filled (metaRing = probability of ring)
         const isRing = crand() < metaRing;
         const strokePad = isRing ? Math.max(1, r * 0.28) * 0.5 : 0;
@@ -716,10 +750,12 @@ function draw(newSeed, opts) {
   }
 
   // ── 3. Draw overlay blobs (multiply) ─────────────────────────────────────
+  const ovAppear = flowLayerAppear(0.35, 0.3);
   ctx.globalCompositeOperation = 'multiply';
   for (const ob of ovBlobs) {
-    const rx = ob.r*ob.stretch*W;
-    const ry = (ob.r/ob.stretch)*H;
+    if (ovAppear <= 0.01) break;
+    const rx = ob.r*ob.stretch*W*ovAppear;
+    const ry = (ob.r/ob.stretch)*H*ovAppear;
     const cx2 = ob.cx*W, cy2 = ob.cy*H;
     const [r2,g2,b2] = parseColor(ob.color);
     const n = ovSoft;
@@ -745,7 +781,9 @@ function draw(newSeed, opts) {
     ctx.restore();
 
     const deg = (ob.angle*180/Math.PI).toFixed(2);
-    svgEls.push(`<polygon points="${ovPts.join(' ')}" transform="translate(${cx2.toFixed(1)},${cy2.toFixed(1)}) rotate(${deg})" fill="${ob.color}" fill-opacity="${ovOpacity.toFixed(3)}" style="mix-blend-mode:multiply"/>`);
+    if (!embedFlowIn || ovAppear >= 0.999) {
+      svgEls.push(`<polygon points="${ovPts.join(' ')}" transform="translate(${cx2.toFixed(1)},${cy2.toFixed(1)}) rotate(${deg})" fill="${ob.color}" fill-opacity="${ovOpacity.toFixed(3)}" style="mix-blend-mode:multiply"/>`);
+    }
   }
 
   // ── 4. Draw pattern swatch ────────────────────────────────────────────────
@@ -920,6 +958,11 @@ for (const [id, valId] of Object.entries(SLIDERS)) {
 
 document.getElementById('dotOsc').addEventListener('change', () => { saveCurrentState(); draw(); });
 document.getElementById('warpOsc').addEventListener('change', () => { saveCurrentState(); draw(); });
+document.getElementById('flowIn')?.addEventListener('change', () => {
+  saveCurrentState();
+  restartFlowIn();
+  draw();
+});
 document.getElementById('checkerGrid')?.addEventListener('change', () => {
   syncCheckerGridUi();
   saveCurrentState();
@@ -932,6 +975,7 @@ document.getElementById('canvasPrimitiveLock').addEventListener('change', () => 
 });
 
 document.getElementById('btn-gen').addEventListener('click', () => {
+  restartFlowIn();
   draw(Math.floor(Math.random() * 0xFFFFFF));
 });
 document.getElementById('btn-save').addEventListener('click', () => {
@@ -978,7 +1022,7 @@ document.getElementById('btn-svg-copy').addEventListener('click', () => {
 const ALL_SLIDER_IDS = Object.keys(SLIDERS);
 const META_STROKE_IDS = new Set(['ends', 'deep', 'mix_deep', 'family_random', 'all_swatches', 'black', 'legacy_mid']);
 const ALL_SELECT_IDS = ['checkerStyle','palette','patType','patColor','patBlend','warpType','metaMode','metaColor','metaStroke'];
-const ALL_CHECKBOX_IDS = ['canvasPrimitiveLock', 'checkerGrid', 'dotOsc', 'warpOsc'];
+const ALL_CHECKBOX_IDS = ['canvasPrimitiveLock', 'checkerGrid', 'dotOsc', 'warpOsc', 'flowIn'];
 const LS_STATE_KEY   = 'gmc_state';
 const LS_PRESETS_KEY = 'gmc_presets';
 const IDB_NAME = 'gmc-generator';
@@ -1194,6 +1238,7 @@ function applyState(state) {
   if (state.rows === undefined && state.cols !== undefined) syncRowsControl(state.cols);
   syncCheckerGridUi();
   if (state.seed !== undefined) currentSeed = state.seed;
+  restartFlowIn();
   draw(currentSeed);
 }
 
@@ -1446,7 +1491,7 @@ function animFrame(now) {
                     parseFloat(document.getElementById('warpOscSpeed').value) > 0 &&
                     parseFloat(document.getElementById('warpOscAmt').value) > 0;
   const chainsMoving = mode !== 'off' && (drift > 0 || pulse > 0 || flow > 0);
-  const introActive = embedFlowIn && animTime < EMBED_FLOW_DUR + EMBED_FLOW_RISE + 0.15;
+  const introActive = syncFlowInFlag() && animTime < EMBED_FLOW_DUR + EMBED_FLOW_RISE + 0.15;
   if (chainsMoving || dotOscOn || warpOscOn || introActive) {
     animTime += dt;
     draw();
@@ -1534,11 +1579,12 @@ function bootGenerator() {
   const embedState = readEmbedConfigFromUrl();
   try {
     const params = new URLSearchParams(location.search);
-    embedFlowIn = document.documentElement.classList.contains('gmc-2d-embed') &&
+    embedUrlFlowIn = document.documentElement.classList.contains('gmc-2d-embed') &&
       (params.get('flow') === '1' || params.get('flow') === 'true');
   } catch (_) {
-    embedFlowIn = false;
+    embedUrlFlowIn = false;
   }
+  syncFlowInFlag();
   if (embedFlowIn) animTime = 0;
   if (embedState) {
     const dw = Number(embedState.canvasWidth) || Number(embedState.canvasSize) || 1440;

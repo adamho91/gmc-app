@@ -344,6 +344,13 @@
 
     <div class="osc-group">
       <div class="osc-toggle-row">
+        <label for="flowIn">Flow in field</label>
+        <label class="switch"><input type="checkbox" id="flowIn"><span class="track"></span></label>
+      </div>
+    </div>
+
+    <div class="osc-group">
+      <div class="osc-toggle-row">
         <label for="warpOsc">Oscillate warp</label>
         <label class="switch"><input type="checkbox" id="warpOsc"><span class="track"></span></label>
       </div>
@@ -388,14 +395,14 @@
       <label class="video-export-span">Size
         <select id="video-size">
           <option value="live">Live canvas</option>
-          <option value="1200">1200²</option>
-          <option value="2000" selected>2000²</option>
-          <option value="3000">3000²</option>
-          <option value="3840">4K · 3840²</option>
+          <option value="1200">1200 max edge</option>
+          <option value="2000" selected>2000 max edge</option>
+          <option value="3000">3000 max edge</option>
+          <option value="3840">4K · 3840 max edge</option>
           <option value="custom">Custom</option>
         </select>
       </label>
-      <label class="video-export-span" id="video-custom-wrap" hidden>Custom px
+      <label class="video-export-span" id="video-custom-wrap" hidden>Custom max edge
         <input type="number" id="video-custom-size" min="256" max="4096" value="3840" step="2">
       </label>
       <label>Quality

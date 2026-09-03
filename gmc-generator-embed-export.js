@@ -702,7 +702,7 @@
     }
     const mode = getEmbedMode();
     const full = isFullscreen();
-    const flow = isFlowIn();
+    const flow = isFlowIn() || !!document.getElementById('flowIn')?.checked;
     const randomize = mode === 'lite' && isRandomOnLoad();
     const { w, h } = readDisplaySize();
     const state = captureState();
