@@ -128,20 +128,23 @@
 
   function resolveLitePalette(state) {
     const style = state.checkerStyle || 'light';
-    let bg = '#ffffff';
-    if (style === 'dark') bg = '#000000';
-    else if (style === 'light') bg = '#ffffff';
-    else if (typeof PALETTES !== 'undefined' && PALETTES[state.palette]?.bgA) {
-      bg = PALETTES[state.palette].bgA;
+    let bgA = '#FFFFFF';
+    let bgB = '#E5ECE7';
+    if (style === 'dark') {
+      bgA = '#403700';
+      bgB = '#000000';
+    } else if (style === 'color' && typeof PALETTES !== 'undefined' && PALETTES[state.palette]) {
+      bgA = PALETTES[state.palette].bgA || bgA;
+      bgB = PALETTES[state.palette].bgB || bgB;
     }
 
     let families = [
-      ['#D5B8FF', '#AB77FF', '#5718C0', '#5718C0', '#AB77FF'],
-      ['#C5E9FF', '#5FB5FE', '#115EF3', '#115EF3', '#5FB5FE'],
-      ['#E5ECE7', '#99EDFF', '#98AFAC', '#98AFAC', '#99EDFF'],
-      ['#F1FFD2', '#ADFF00', '#004012', '#004012', '#ADFF00'],
-      ['#D9D7CC', '#FFFF00', '#403700', '#403700', '#FFFF00'],
-      ['#FFC4DB', '#F57EC3', '#EC0648', '#EC0648', '#F57EC3'],
+      ['#d5b8ff', '#c49eff', '#b384ff', '#9a64f2', '#793ed9'],
+      ['#c5e9ff', '#9cd4ff', '#73bffe', '#4fa4fc', '#3081f7'],
+      ['#e5ece7', '#c7ecf1', '#a8edfa', '#99e1ee', '#98c8cd'],
+      ['#f1ffd2', '#d6ff7e', '#bbff2a', '#8ad904', '#458c0b'],
+      ['#d9d7cc', '#e8e77a', '#f7f729', '#d9d700', '#8c8700'],
+      ['#ffc4db', '#fba8d1', '#f78cc8', '#f366aa', '#f03679'],
     ];
     try {
       if (typeof PALETTES !== 'undefined' && state.palette && PALETTES[state.palette]?.families) {
@@ -151,145 +154,297 @@
       }
     } catch (_) {}
 
-    return { bg, families };
+    return { bgA, bgB, families };
   }
 
-  /** Self-contained canvas snippet — meta-node animation only (no iframe / full app). */
+  function bool(state, key, fallback) {
+    if (state[key] === undefined) return fallback;
+    return !!state[key];
+  }
+
+  /** Self-contained canvas — checker + dots + meta animation (no iframe / full app). */
   function buildLiteAnimationEmbed(state, w, h) {
     const seed = Number(state.seed) || 1;
-    const chains = Math.max(1, Math.round(num(state, 'metaChains', 1)));
-    const nodes = Math.max(2, Math.round(num(state, 'metaNodes', 3)));
-    const size = num(state, 'metaSize', 0.045);
-    const sVar = num(state, 'metaSVar', 0.6);
-    const step = num(state, 'metaStep', 0.105);
-    const ring = num(state, 'metaRing', 0.62);
-    const opacity = num(state, 'metaOpacity', 1);
-    const drift = num(state, 'metaDrift', 0.06);
-    const pulse = num(state, 'metaPulse', 0.44);
-    const flow = num(state, 'metaFlow', 0.3);
-    const metaColor = state.metaColor || 'random';
-    const metaStroke = state.metaStroke || 'family_random';
-    const { bg, families } = resolveLitePalette(state);
+    const cols = Math.max(4, Math.round(num(state, 'cols', 35)));
+    const rows = Math.max(4, Math.round(num(state, 'rows', Math.round(cols * (h / w)))));
+    const { bgA, bgB, families } = resolveLitePalette(state);
     const ratio = ((h / w) * 100).toFixed(4);
+    const uid = `gmc-lite-${seed.toString(36)}-${Math.abs((w * 1000 + h) | 0).toString(36)}`;
 
     const cfg = {
       seed,
       w,
       h,
-      bg,
+      cols,
+      rows,
+      bgA,
+      bgB,
       families,
-      chains,
-      nodes,
-      size,
-      sVar,
-      step,
-      ring,
-      opacity,
-      drift,
-      pulse,
-      flow,
-      metaColor,
-      metaStroke,
+      checkerGrid: bool(state, 'checkerGrid', true),
+      checkerVar: num(state, 'checkerVar', 0),
+      blobCount: Math.max(0, Math.round(num(state, 'blobCount', 10))),
+      rMin: num(state, 'rMin', 0.05),
+      rMax: num(state, 'rMax', 0.4),
+      blobShape: num(state, 'blobShape', 1.7),
+      softness: num(state, 'softness', 2.6),
+      megaCount: Math.max(0, Math.round(num(state, 'megaCount', 3))),
+      megaScale: num(state, 'megaScale', 0.55),
+      megaLobes: Math.max(1, Math.round(num(state, 'megaLobes', 3))),
+      lobeScatter: num(state, 'lobeScatter', 0.37),
+      megaShape: num(state, 'megaShape', 1.4),
+      cVar: num(state, 'cVar', 0.14),
+      dotMax: num(state, 'dotMax', 0.58),
+      dotMin: num(state, 'dotMin', 0.28),
+      dotOsc: bool(state, 'dotOsc', true),
+      dotOscSpeed: num(state, 'dotOscSpeed', 0.2),
+      dotOscAmt: num(state, 'dotOscAmt', 0.2),
+      dotOscWave: num(state, 'dotOscWave', 7.1),
+      warpType: state.warpType || 'bulge',
+      warpStr: num(state, 'warpStr', 0),
+      warpCX: num(state, 'warpCX', 0.29),
+      warpCY: num(state, 'warpCY', 0.15),
+      warpSize: num(state, 'warpSize', 1),
+      compBulge: num(state, 'compBulge', 1),
+      warpOsc: bool(state, 'warpOsc', false),
+      warpOscSpeed: num(state, 'warpOscSpeed', 0.17),
+      warpOscAmt: num(state, 'warpOscAmt', 0.4),
+      warpOscWave: num(state, 'warpOscWave', 2.5),
+      metaMode: state.metaMode || 'over',
+      chains: Math.max(0, Math.round(num(state, 'metaChains', 1))),
+      nodes: Math.max(1, Math.round(num(state, 'metaNodes', 3))),
+      size: num(state, 'metaSize', 0.045),
+      sVar: num(state, 'metaSVar', 0.6),
+      step: num(state, 'metaStep', 0.105),
+      ring: num(state, 'metaRing', 0.62),
+      opacity: num(state, 'metaOpacity', 1),
+      drift: num(state, 'metaDrift', 0.06),
+      pulse: num(state, 'metaPulse', 0.44),
+      flow: num(state, 'metaFlow', 0.3),
+      metaColor: state.metaColor || 'random',
+      metaStroke: state.metaStroke || 'family_random',
     };
 
     const cfgJson = JSON.stringify(cfg);
 
-    return `<!-- GMC · lite meta animation · ${w}×${h} · self-contained -->
+    return `<!-- GMC · lite field + animation · ${w}×${h} · self-contained -->
 <div class="gmc-lite" style="width:100%;max-width:${w}px;margin:0 auto;position:relative;line-height:0;background:transparent">
   <div style="width:100%;padding-top:${ratio}%;pointer-events:none" aria-hidden="true"></div>
-  <canvas id="gmc-lite-c" width="${w}" height="${h}" style="position:absolute;inset:0;width:100%;height:100%;display:block;background:transparent"></canvas>
+  <canvas id="${uid}" width="${w}" height="${h}" style="position:absolute;inset:0;width:100%;height:100%;display:block;background:transparent"></canvas>
 </div>
 <script>
 (function(){
   var C=${cfgJson};
-  var canvas=document.getElementById("gmc-lite-c");
+  var canvas=document.getElementById("${uid}");
   if(!canvas)return;
   var ctx=canvas.getContext("2d");
-  var W=C.w,H=C.h,t0=performance.now();
+  var W=C.w,H=C.h,COLS=C.cols,ROWS=C.rows,CS=W/COLS,t0=performance.now();
 
-  function mulberry(seed){
+  function xorshift(seed){
     var s=seed>>>0||1;
-    return function(){
-      s^=s<<13;s^=s>>>17;s^=s<<5;
-      return (s>>>0)/4294967296;
-    };
+    return function(){s^=s<<13;s^=s>>>17;s^=s<<5;return (s>>>0)/4294967296;};
   }
-
-  function strokeFor(fam,ch,cri){
-    var mode=C.metaStroke;
-    if(mode==="ends")return fam[[0,4,3][ch%3]]||fam[0];
-    if(mode==="deep")return fam[0];
-    if(mode==="black")return"#000000";
-    if(mode==="family_random")return fam[cri(0,fam.length-1)];
-    if(mode==="mix_deep"){var opts=[0,3,4].filter(function(i){return i<fam.length;});return fam[opts[cri(0,opts.length-1)]];}
+  function hexRgb(h){
+    h=String(h).replace("#","");
+    if(h.length===3)h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+    var v=parseInt(h,16);
+    return [(v>>16)&255,(v>>8)&255,v&255];
+  }
+  function lerpHex(a,b,t){
+    var A=hexRgb(a),B=hexRgb(b);
+    var r=Math.round(A[0]+(B[0]-A[0])*t),g=Math.round(A[1]+(B[1]-A[1])*t),bl=Math.round(A[2]+(B[2]-A[2])*t);
+    return "#"+((1<<24)+(r<<16)+(g<<8)+bl).toString(16).slice(1);
+  }
+  function inflColor(infl,fam){
+    var p=(1-infl)*(fam.length-1),lo=Math.floor(p),hi=Math.min(fam.length-1,lo+1);
+    return lerpHex(fam[hi],fam[lo],p-lo);
+  }
+  function strokeFor(fam,ch,ri){
+    var m=C.metaStroke;
+    if(m==="ends")return fam[[0,4,3][ch%3]]||fam[0];
+    if(m==="deep")return fam[0];
+    if(m==="black")return"#000";
+    if(m==="family_random")return fam[ri(0,fam.length-1)];
+    if(m==="mix_deep"){var o=[0,3,4].filter(function(i){return i<fam.length;});return fam[o[ri(0,o.length-1)]];}
     return fam[Math.min(3,fam.length-1)];
   }
 
   function frame(now){
     requestAnimationFrame(frame);
     var time=(now-t0)/1000;
-    var rand=mulberry(C.seed^0xDEAD);
+    var rand=xorshift(C.seed);
     function rr(a,b){return a+rand()*(b-a);}
     function ri(a,b){return Math.floor(rr(a,b+0.9999));}
 
-    ctx.clearRect(0,0,W,H);
-    ctx.fillStyle=C.bg;
-    ctx.fillRect(0,0,W,H);
-    ctx.globalAlpha=C.opacity;
+    var warpOscOn=C.warpOsc&&C.warpOscAmt>0;
+    var warpPhase=warpOscOn?time*C.warpOscSpeed*2.5:0;
+    var breathe=warpOscOn?Math.sin(warpPhase)*C.warpOscAmt:0;
+    var clamp01=function(v){return Math.max(0,Math.min(1,v));};
+    var effStr=clamp01(C.warpStr*(1+breathe*0.85));
+    var effSize=clamp01(C.warpSize*(1+breathe*0.65));
+    var effBulge=C.compBulge+breathe*0.35;
+    var effCX=clamp01(C.warpCX+(warpOscOn?Math.sin(warpPhase*0.7)*C.warpOscAmt*0.06:0));
+    var effCY=clamp01(C.warpCY+(warpOscOn?Math.cos(warpPhase*0.9)*C.warpOscAmt*0.06:0));
 
-    for(var ch=0;ch<C.chains;ch++){
-      var fam;
-      if(C.metaColor==="single")fam=C.families[0];
-      else if(C.metaColor==="random")fam=C.families[ri(0,C.families.length-1)];
-      else fam=C.families[ch%C.families.length];
-      var fill=C.metaColor==="random"?fam[ri(0,Math.min(2,fam.length-1))]:fam[Math.min(1,fam.length-1)];
-      var stroke=strokeFor(fam,ch,ri);
-      var x=rr(0.05,0.95)*W;
-      var y=rr(0.05,0.95)*H;
-      var angle=rr(0,Math.PI*2)+time*C.flow*0.35;
-      var stepPx=C.step*W;
-      var maxR=Math.max(2,C.size*W*(1+C.sVar*0.8)*(C.pulse>0?1.16:1));
-      var edge=maxR+(C.ring>0?maxR*0.14:0);
+    function compWarp(nx,ny){
+      if(!effBulge)return{px:nx*W,py:ny*H};
+      var dx=nx-effCX,dy=ny-effCY,dist=Math.sqrt(dx*dx+dy*dy);
+      if(dist<1e-4)return{px:nx*W,py:ny*H};
+      var maxDist=Math.sqrt(effCX*effCX+effCY*effCY)*1.2+0.01;
+      var t=dist/maxDist,r2;
+      if(effBulge>0)r2=dist*(1+effBulge*t*t*2.2);
+      else{r2=dist*(1+effBulge*t*1.8);r2=Math.max(0,r2);}
+      var s=r2/dist;
+      return{px:(effCX+dx*s)*W,py:(effCY+dy*s)*H};
+    }
+    function warpAt(nx,ny){
+      if(C.warpType==="none"||(effStr<=0&&effSize<=0))return{sx:1,sy:1,ang:0,sz:1};
+      var dx=nx-effCX,dy=ny-effCY,dist=Math.sqrt(dx*dx+dy*dy),ang=Math.atan2(dy,dx);
+      var sx=1,sy=1,dotAng=0,sz=1;
+      if(C.warpType==="bulge"){
+        var f=Math.exp(-dist*dist*2.5);
+        sx=1+effStr*f*3.5;sy=Math.max(0.05,1-effStr*f*1.2);dotAng=ang;sz=1+effSize*f*3;
+      }
+      if(warpOscOn&&C.warpOscWave>0){
+        var rdx=nx-0.5,rdy=ny-0.5,rd=Math.sqrt(rdx*rdx+rdy*rdy);
+        var rip=1+Math.sin(warpPhase-rd*C.warpOscWave*Math.PI*2)*C.warpOscAmt*0.35;
+        sx*=rip;sy*=rip;sz*=rip;
+      }
+      return{sx:Math.max(0.1,sx),sy:Math.max(0.1,sy),ang:dotAng,sz:Math.max(0.1,sz)};
+    }
+    function influence(b,nx,ny){
+      var dx=nx-b.cx,dy=ny-b.cy,cos=Math.cos(b.angle),sin=Math.sin(b.angle);
+      var lx=(dx*cos+dy*sin)/(b.r*b.stretch),ly=(-dx*sin+dy*cos)/(b.r/b.stretch);
+      var s=b.isMega?C.megaShape:C.blobShape;
+      var d=Math.pow(Math.pow(Math.abs(lx),s*2)+Math.pow(Math.abs(ly),s*2),1/(s*2));
+      return Math.max(0,1-Math.pow(d,C.softness));
+    }
 
-      for(var n=0;n<C.nodes;n++){
-        var phase=rr(0,Math.PI*2);
-        var r=C.size*W*(1+rr(-C.sVar*0.6,C.sVar*0.8));
-        if(C.pulse>0)r*=1+Math.sin(time*C.pulse*2.2+phase)*0.16;
-        r=Math.max(2,r);
-        var isRing=rand()<C.ring;
-        var px=x,py=y;
-        if(C.drift>0){
-          var amp=stepPx*0.28*C.drift;
-          px+=Math.sin(time*C.drift*1.3+phase)*amp;
-          py+=Math.cos(time*C.drift*1.1+phase*1.7)*amp;
-        }
-        var pad=r+(isRing?Math.max(1,r*0.28)*0.5:0);
-        px=Math.max(pad,Math.min(W-pad,px));
-        py=Math.max(pad,Math.min(H-pad,py));
-
-        ctx.beginPath();
-        ctx.arc(px,py,r,0,Math.PI*2);
-        if(isRing){
-          var lw=Math.max(1,r*0.28);
-          ctx.fillStyle=C.bg;
-          ctx.fill();
-          ctx.lineWidth=lw;
-          ctx.strokeStyle=stroke;
-          ctx.stroke();
-        }else{
-          ctx.fillStyle=fill;
-          ctx.fill();
-        }
-
-        angle+=rr(-0.9,0.9);
-        var dist=stepPx*rr(0.7,1.4);
-        x+=Math.cos(angle)*dist;
-        y+=Math.sin(angle)*dist;
-        x=Math.max(edge,Math.min(W-edge,x));
-        y=Math.max(edge,Math.min(H-edge,y));
+    /* --- blobs (seeded once per frame, same order as main app) --- */
+    var blobs=[];
+    for(var i=0;i<C.blobCount;i++){
+      var famIdx=(blobs.length===0||rand()<C.cVar)?ri(0,C.families.length-1):blobs[ri(0,blobs.length-1)].famIdx;
+      blobs.push({cx:rr(0.04,0.96),cy:rr(0.04,0.96),r:rr(C.rMin,C.rMax),famIdx:famIdx,stretch:rr(0.75,1.35),angle:rr(0,Math.PI)});
+    }
+    var mega=[];
+    for(var m=0;m<C.megaCount;m++){
+      var ax=rr(0.1,0.9),ay=rr(0.1,0.9),mf=ri(0,C.families.length-1);
+      for(var l=0;l<C.megaLobes;l++){
+        var a=(l/C.megaLobes)*Math.PI*2+rr(-0.4,0.4),dist=rr(0,C.lobeScatter*C.megaScale*0.8);
+        mega.push({cx:ax+Math.cos(a)*dist,cy:ay+Math.sin(a)*dist,r:C.megaScale*rr(0.55,1),famIdx:mf,stretch:rr(0.7,1.4),angle:rr(0,Math.PI),isMega:true});
       }
     }
+    var units=blobs.concat(mega);
+
+    ctx.clearRect(0,0,W,H);
+    ctx.globalCompositeOperation="source-over";
     ctx.globalAlpha=1;
+    ctx.fillStyle=C.bgA;
+    ctx.fillRect(0,0,W,H);
+
+    if(C.checkerGrid){
+      for(var row=0;row<ROWS;row++){
+        for(var col=0;col<COLS;col++){
+          var sc=C.checkerVar>0?Math.max(0.15,rr(1-C.checkerVar*0.7,1+C.checkerVar*0.7)):1;
+          var fill=(row+col)%2===0?C.bgA:C.bgB;
+          var nx=(col+0.5)/COLS,ny=(row+0.5)/ROWS,p=compWarp(nx,ny);
+          var cw=CS*sc,ch=CS*sc;
+          ctx.fillStyle=fill;
+          ctx.fillRect(p.px-cw/2,p.py-ch/2,cw,ch);
+        }
+      }
+    }
+
+    if(C.metaMode!=="replace"){
+      for(var u=0;u<units.length;u++){
+        var unit=units[u],family=C.families[unit.famIdx];
+        var pad=unit.r*Math.max(unit.stretch,1/unit.stretch)*1.6;
+        var c0=Math.max(0,Math.floor((unit.cx-pad)*COLS));
+        var c1=Math.min(COLS-1,Math.ceil((unit.cx+pad)*COLS));
+        var r0=Math.max(0,Math.floor((unit.cy-pad)*ROWS));
+        var r1=Math.min(ROWS-1,Math.ceil((unit.cy+pad)*ROWS));
+        for(var row2=r0;row2<=r1;row2++){
+          for(var col2=c0;col2<=c1;col2++){
+            var nx2=(col2+0.5)/COLS,ny2=(row2+0.5)/ROWS;
+            var infl=influence(unit,nx2,ny2);
+            if(infl<0.006)continue;
+            var baseR=CS*0.5*(C.dotMin+(C.dotMax-C.dotMin)*infl);
+            if(C.dotOsc&&C.dotOscAmt>0){
+              var rdx=nx2-0.5,rdy=ny2-0.5,rdist=Math.sqrt(rdx*rdx+rdy*rdy);
+              var osc=1+Math.sin(time*C.dotOscSpeed*2.5-rdist*C.dotOscWave*Math.PI*2)*C.dotOscAmt;
+              baseR*=Math.max(0,osc);
+            }
+            if(baseR<0.4)continue;
+            var fill2=inflColor(infl,family);
+            var pw=compWarp(nx2,ny2),wv=warpAt(nx2,ny2);
+            var rx=baseR*wv.sz*wv.sx,ry=baseR*wv.sz*wv.sy;
+            ctx.save();
+            ctx.translate(pw.px,pw.py);
+            if(wv.ang)ctx.rotate(wv.ang);
+            ctx.beginPath();
+            ctx.ellipse(0,0,Math.max(0.3,rx),Math.max(0.3,ry),0,0,Math.PI*2);
+            ctx.fillStyle=fill2;
+            ctx.fill();
+            ctx.restore();
+          }
+        }
+      }
+    }
+
+    if(C.metaMode!=="off"&&C.chains>0){
+      var crand=xorshift(C.seed^0xDEAD);
+      function crr(a,b){return a+crand()*(b-a);}
+      function cri(a,b){return Math.floor(crr(a,b+0.9999));}
+      ctx.globalAlpha=C.opacity;
+      for(var ch=0;ch<C.chains;ch++){
+        var fam;
+        if(C.metaColor==="single")fam=C.families[0];
+        else if(C.metaColor==="random")fam=C.families[cri(0,C.families.length-1)];
+        else fam=C.families[ch%C.families.length];
+        var fillN=C.metaColor==="random"?fam[cri(0,Math.min(2,fam.length-1))]:fam[Math.min(1,fam.length-1)];
+        var stroke=strokeFor(fam,ch,cri);
+        var x=crr(0.05,0.95)*W,y=crr(0.05,0.95)*H;
+        var angle=crr(0,Math.PI*2)+time*C.flow*0.35;
+        var stepPx=C.step*W;
+        var maxR=Math.max(2,C.size*W*(1+C.sVar*0.8)*(C.pulse>0?1.16:1));
+        var edge=maxR+(C.ring>0?maxR*0.14:0);
+        for(var n=0;n<C.nodes;n++){
+          var phase=crr(0,Math.PI*2);
+          var r=C.size*W*(1+crr(-C.sVar*0.6,C.sVar*0.8));
+          if(C.pulse>0)r*=1+Math.sin(time*C.pulse*2.2+phase)*0.16;
+          r=Math.max(2,r);
+          var isRing=crand()<C.ring;
+          var px=x,py=y;
+          if(C.drift>0){
+            var amp=stepPx*0.28*C.drift;
+            px+=Math.sin(time*C.drift*1.3+phase)*amp;
+            py+=Math.cos(time*C.drift*1.1+phase*1.7)*amp;
+          }
+          var npad=r+(isRing?Math.max(1,r*0.28)*0.5:0);
+          px=Math.max(npad,Math.min(W-npad,px));
+          py=Math.max(npad,Math.min(H-npad,py));
+          ctx.beginPath();
+          ctx.arc(px,py,r,0,Math.PI*2);
+          if(isRing){
+            var lw=Math.max(1,r*0.28);
+            ctx.fillStyle=C.bgA;
+            ctx.fill();
+            ctx.lineWidth=lw;
+            ctx.strokeStyle=stroke;
+            ctx.stroke();
+          }else{
+            ctx.fillStyle=fillN;
+            ctx.fill();
+          }
+          angle+=crr(-0.9,0.9);
+          var distN=stepPx*crr(0.7,1.4);
+          x+=Math.cos(angle)*distN;
+          y+=Math.sin(angle)*distN;
+          x=Math.max(edge,Math.min(W-edge,x));
+          y=Math.max(edge,Math.min(H-edge,y));
+        }
+      }
+      ctx.globalAlpha=1;
+    }
   }
   requestAnimationFrame(frame);
 })();
@@ -307,7 +462,7 @@
 
     if (mode === 'lite') {
       textArea.value = buildLiteAnimationEmbed(state, w, h);
-      setStatus(`Lite animation · ${w}×${h} · self-contained (no host URL)`);
+      setStatus(`Lite field + animation · ${w}×${h} · self-contained (no host URL)`);
       return;
     }
 
