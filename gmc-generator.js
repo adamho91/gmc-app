@@ -138,11 +138,12 @@ let currentSeed = Date.now() & 0xFFFFFF;
 let animTime = 0;
 let embedUrlFlowIn = false;
 let embedFlowIn = false;
+let embedPageSound = false;
 const EMBED_FLOW_DUR = 0.78;
 const EMBED_FLOW_CLUMP = 5;
 const EMBED_FLOW_RISE = 0.22;
 
-/** Mic → smoothed 0–1 level for live canvas only (ignored during video export). */
+/** Mic / page-audio levels for live canvas (ignored during video export). */
 const SoundInput = (() => {
   let audioCtx = null;
   let analyser = null;
@@ -150,6 +151,8 @@ const SoundInput = (() => {
   let stream = null;
   let smoothed = 0;
   let starting = null;
+  let pageBridge = false;
+  let externalLevel = 0;
 
   function setStatus(text) {
     const el = document.getElementById('sound-status');
@@ -161,6 +164,20 @@ const SoundInput = (() => {
     }
     el.hidden = false;
     el.textContent = text;
+  }
+
+  function onPageAudioMessage(event) {
+    const data = event?.data;
+    if (!data || data.type !== 'gmc-2d-audio') return;
+    const n = Number(data.level);
+    if (!Number.isFinite(n)) return;
+    externalLevel = Math.max(0, Math.min(1, n));
+  }
+
+  function enablePageBridge() {
+    if (pageBridge) return;
+    pageBridge = true;
+    window.addEventListener('message', onPageAudioMessage);
   }
 
   async function start() {
@@ -216,14 +233,13 @@ const SoundInput = (() => {
     analyser = null;
     freqData = null;
     smoothed = 0;
-    setStatus('');
+    if (!pageBridge) setStatus('');
   }
 
-  function level() {
-    if (window.GMCGeneratorExporting || !analyser || !freqData) return 0;
+  function readMicLevel() {
+    if (!analyser || !freqData) return 0;
     if (audioCtx?.state === 'suspended') audioCtx.resume().catch(() => {});
     analyser.getByteFrequencyData(freqData);
-    // Bias toward bass / low-mids so beats read clearly.
     const n = Math.min(40, freqData.length);
     let sum = 0;
     for (let i = 0; i < n; i++) sum += freqData[i] * (1.15 - i / n * 0.4);
@@ -232,11 +248,22 @@ const SoundInput = (() => {
     return smoothed;
   }
 
-  function isLive() {
-    return !!analyser;
+  function level() {
+    if (window.GMCGeneratorExporting) return 0;
+    const mic = readMicLevel();
+    if (pageBridge) return Math.max(mic, externalLevel);
+    return mic;
   }
 
-  return { start, stop, level, isLive, setStatus };
+  function isLive() {
+    return pageBridge || !!analyser;
+  }
+
+  function isPageBridge() {
+    return pageBridge;
+  }
+
+  return { start, stop, level, isLive, enablePageBridge, isPageBridge, setStatus };
 })();
 
 function syncFlowInFlag() {
@@ -405,7 +432,7 @@ function draw(newSeed, opts) {
   const dotOscSpeed= parseFloat(document.getElementById('dotOscSpeed').value);
   const dotOscAmt  = parseFloat(document.getElementById('dotOscAmt').value);
   const dotOscWave = parseFloat(document.getElementById('dotOscWave').value);
-  const soundIn    = !!document.getElementById('soundIn')?.checked;
+  const soundIn    = !!document.getElementById('soundIn')?.checked || embedPageSound;
   const soundAmt   = parseFloat(document.getElementById('soundAmt')?.value || 0);
   const soundLevel = (soundIn && soundAmt > 0 && SoundInput.isLive()) ? SoundInput.level() : 0;
   const ovCount    = parseInt(document.getElementById('ovCount').value);
@@ -1361,9 +1388,12 @@ function applyState(state) {
     if (el && state[id] !== undefined) el.checked = !!state[id];
   });
   // Mic needs a fresh user gesture — never auto-arm from presets/local state.
-  const soundEl = document.getElementById('soundIn');
-  if (soundEl) soundEl.checked = false;
-  SoundInput.stop();
+  // Live embeds with page-audio keep the bridge; only clear the studio mic toggle.
+  if (!embedPageSound) {
+    const soundEl = document.getElementById('soundIn');
+    if (soundEl) soundEl.checked = false;
+    SoundInput.stop();
+  }
   if (state.rows === undefined && state.cols !== undefined) syncRowsControl(state.cols);
   syncCheckerGridUi();
   if (state.seed !== undefined) currentSeed = state.seed;
@@ -1619,9 +1649,9 @@ function animFrame(now) {
   const warpOscOn = document.getElementById('warpOsc').checked &&
                     parseFloat(document.getElementById('warpOscSpeed').value) > 0 &&
                     parseFloat(document.getElementById('warpOscAmt').value) > 0;
-  const soundOn = document.getElementById('soundIn')?.checked &&
+  const soundOn = ((document.getElementById('soundIn')?.checked || embedPageSound) &&
                   parseFloat(document.getElementById('soundAmt')?.value || 0) > 0 &&
-                  SoundInput.isLive();
+                  SoundInput.isLive());
   const chainsMoving = mode !== 'off' && (drift > 0 || pulse > 0 || flow > 0);
   const introActive = syncFlowInFlag() && animTime < EMBED_FLOW_DUR + EMBED_FLOW_RISE + 0.15;
   if (chainsMoving || dotOscOn || warpOscOn || soundOn || introActive) {
@@ -1711,11 +1741,14 @@ function bootGenerator() {
   const embedState = readEmbedConfigFromUrl();
   try {
     const params = new URLSearchParams(location.search);
-    embedUrlFlowIn = document.documentElement.classList.contains('gmc-2d-embed') &&
-      (params.get('flow') === '1' || params.get('flow') === 'true');
+    const isEmbed = document.documentElement.classList.contains('gmc-2d-embed');
+    embedUrlFlowIn = isEmbed && (params.get('flow') === '1' || params.get('flow') === 'true');
+    embedPageSound = isEmbed && (params.get('sound') === '1' || params.get('sound') === 'true');
   } catch (_) {
     embedUrlFlowIn = false;
+    embedPageSound = false;
   }
+  if (embedPageSound) SoundInput.enablePageBridge();
   syncFlowInFlag();
   if (embedFlowIn) animTime = 0;
   if (embedState) {

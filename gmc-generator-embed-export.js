@@ -8,6 +8,7 @@
   const fullscreenInput = document.getElementById('embed-fullscreen');
   const flowInInput = document.getElementById('embed-flow-in');
   const randomSeedInput = document.getElementById('embed-random-seed');
+  const soundPageInput = document.getElementById('embed-sound-page');
   const randomField = document.getElementById('embed-random-field');
   const widthInput = document.getElementById('embed-display-w');
   const heightInput = document.getElementById('embed-display-h');
@@ -24,6 +25,7 @@
   const FULL_KEY = 'gmc-2d-embed-fullscreen';
   const FLOW_KEY = 'gmc-2d-embed-flow-in';
   const RANDOM_KEY = 'gmc-2d-embed-random-seed';
+  const SOUND_KEY = 'gmc-2d-embed-sound-page';
 
   function setStatus(message) {
     if (status) status.textContent = message || '';
@@ -51,6 +53,10 @@
 
   function isRandomOnLoad() {
     return !!randomSeedInput?.checked;
+  }
+
+  function isSoundPage() {
+    return !!soundPageInput?.checked;
   }
 
   function detectHostUrl() {
@@ -97,6 +103,7 @@
       localStorage.setItem(FULL_KEY, full ? '1' : '0');
       localStorage.setItem(FLOW_KEY, isFlowIn() ? '1' : '0');
       localStorage.setItem(RANDOM_KEY, isRandomOnLoad() ? '1' : '0');
+      localStorage.setItem(SOUND_KEY, isSoundPage() ? '1' : '0');
     } catch (_) {}
   }
 
@@ -119,6 +126,9 @@
       if (randomSeedInput) randomSeedInput.checked = localStorage.getItem(RANDOM_KEY) === '1';
     } catch (_) {}
     try {
+      if (soundPageInput) soundPageInput.checked = localStorage.getItem(SOUND_KEY) === '1';
+    } catch (_) {}
+    try {
       const raw = localStorage.getItem(SIZE_KEY);
       if (raw) {
         const { w, h } = JSON.parse(raw);
@@ -133,17 +143,78 @@
     syncModeUi();
   }
 
-  function buildPlayerUrl(host, payload, fullscreen, flowIn) {
+  function buildPlayerUrl(host, payload, fullscreen, flowIn, soundPage) {
     const base = String(host || '').replace(/\/+$/, '');
     const fill = fullscreen ? '&fill=1' : '';
     const flow = flowIn ? '&flow=1' : '';
-    return `${base}/gmc-generator.html?embed=1${fill}${flow}&c=${encodeURIComponent(payload)}`;
+    const sound = soundPage ? '&sound=1' : '';
+    return `${base}/gmc-generator.html?embed=1${fill}${flow}${sound}&c=${encodeURIComponent(payload)}`;
   }
 
-  function buildIframeEmbed(payload, host, w, h, fullscreen, flowIn) {
-    const src = buildPlayerUrl(host, payload, fullscreen, flowIn);
+  /** Tap host-page &lt;audio&gt;/&lt;video&gt; for levels. mode: "lite" exposes reader; "live" postMessages iframes. */
+  function buildPageAudioScript(mode) {
+    const pushLive = mode === 'live'
+      ? `function push(){var level=readLevel();var frames=document.querySelectorAll(".gmc-2d-embed iframe");for(var i=0;i<frames.length;i++){try{frames[i].contentWindow.postMessage({type:"gmc-2d-audio",level:level},"*");}catch(e){}}requestAnimationFrame(push);}requestAnimationFrame(push);`
+      : `window.__gmcPageAudioLevel=function(){return readLevel();};`;
+    return `<script>
+(function(){
+  if(window.__gmcPageAudioBooted)return;
+  window.__gmcPageAudioBooted=1;
+  var ctx=null,analyser=null,data=null,smoothed=0,hooked=[];
+  function ensure(){
+    if(ctx)return;
+    var AC=window.AudioContext||window.webkitAudioContext;
+    if(!AC)return;
+    ctx=new AC();
+    analyser=ctx.createAnalyser();
+    analyser.fftSize=512;
+    analyser.smoothingTimeConstant=0.55;
+    data=new Uint8Array(analyser.frequencyBinCount);
+    analyser.connect(ctx.destination);
+  }
+  function hook(el){
+    if(!el||(el.tagName!=="AUDIO"&&el.tagName!=="VIDEO"))return;
+    if(hooked.indexOf(el)>=0)return;
+    try{
+      ensure();
+      if(!ctx||!analyser)return;
+      var src=ctx.createMediaElementSource(el);
+      src.connect(analyser);
+      hooked.push(el);
+    }catch(e){}
+  }
+  function scan(){
+    var list=document.querySelectorAll("audio,video");
+    for(var i=0;i<list.length;i++)hook(list[i]);
+  }
+  function readLevel(){
+    if(!analyser||!data)return smoothed;
+    if(ctx&&ctx.state==="suspended")ctx.resume();
+    analyser.getByteFrequencyData(data);
+    var n=Math.min(40,data.length),sum=0,i;
+    for(i=0;i<n;i++)sum+=data[i]*(1.15-i/n*0.4);
+    var raw=Math.min(1,(sum/n)/210);
+    smoothed+=(raw-smoothed)*0.38;
+    return smoothed;
+  }
+  function unlock(){ensure();if(ctx&&ctx.state==="suspended")ctx.resume();scan();}
+  ["pointerdown","keydown","touchstart","click"].forEach(function(ev){
+    window.addEventListener(ev,unlock,{passive:true});
+  });
+  document.addEventListener("play",function(e){hook(e.target);unlock();},true);
+  scan();
+  setInterval(scan,2000);
+  ${pushLive}
+})();
+<\/script>`;
+  }
+
+  function buildIframeEmbed(payload, host, w, h, fullscreen, flowIn, soundPage) {
+    const src = buildPlayerUrl(host, payload, fullscreen, flowIn, soundPage);
+    const soundLabel = soundPage ? ' · page audio' : '';
+    const bridge = soundPage ? `\n${buildPageAudioScript('live')}` : '';
     if (fullscreen) {
-      return `<!-- GMC Generator · live 2D · full browser screen${flowIn ? ' · flow-in' : ''} -->
+      return `<!-- GMC Generator · live 2D · full browser screen${flowIn ? ' · flow-in' : ''}${soundLabel} -->
 <!-- Player loads from ${host} -->
 <div class="gmc-2d-embed gmc-2d-embed--fullscreen" style="position:fixed;inset:0;width:100%;height:100%;margin:0;line-height:0;background:transparent;z-index:0;pointer-events:none" aria-hidden="true">
   <iframe
@@ -153,10 +224,10 @@
     allow="autoplay"
     tabindex="-1"
   ></iframe>
-</div>`;
+</div>${bridge}`;
     }
     const ratio = ((h / w) * 100).toFixed(4);
-    return `<!-- GMC Generator · live 2D · ${w}×${h}${flowIn ? ' · flow-in' : ''} -->
+    return `<!-- GMC Generator · live 2D · ${w}×${h}${flowIn ? ' · flow-in' : ''}${soundLabel} -->
 <!-- Player loads from ${host} -->
 <div class="gmc-2d-embed" style="width:100%;max-width:${w}px;margin:0 auto;position:relative;line-height:0;background:transparent;aspect-ratio:${w} / ${h}">
   <div style="width:100%;padding-top:${ratio}%;pointer-events:none" aria-hidden="true"></div>
@@ -168,7 +239,7 @@
     style="position:absolute;inset:0;width:100%;height:100%;border:0;display:block;background:transparent"
     allow="autoplay"
   ></iframe>
-</div>`;
+</div>${bridge}`;
   }
 
   function num(state, key, fallback) {
@@ -220,7 +291,7 @@
   }
 
   /** Self-contained canvas — checker + dots + meta animation (no iframe / full app). */
-  function buildLiteAnimationEmbed(state, w, h, fullscreen, flowIn, randomOnLoad) {
+  function buildLiteAnimationEmbed(state, w, h, fullscreen, flowIn, randomOnLoad, soundPage) {
     const seed = Number(state.seed) || 1;
     const cols = Math.max(4, Math.round(num(state, 'cols', 35)));
     const rows = Math.max(4, Math.round(num(state, 'rows', Math.round(cols * (h / w)))));
@@ -237,6 +308,8 @@
       fullscreen: !!fullscreen,
       flowIn: !!flowIn,
       randomOnLoad: !!randomOnLoad,
+      soundPage: !!soundPage,
+      soundAmt: num(state, 'soundAmt', 0.65),
       bgA,
       bgB,
       families,
@@ -293,6 +366,7 @@
     const sizeLabel = fullscreen ? 'full browser screen' : `${w}×${h}`;
     const flowLabel = flowIn ? ' · flow-in' : '';
     const randomLabel = randomOnLoad ? ' · randomize' : '';
+    const soundLabel = soundPage ? ' · page audio' : '';
     const wrapStyle = fullscreen
       ? 'position:fixed;inset:0;width:100%;height:100%;margin:0;line-height:0;background:transparent;z-index:0;pointer-events:none;overflow:hidden'
       : `width:100%;max-width:${w}px;margin:0 auto;position:relative;line-height:0;background:transparent;aspect-ratio:${w} / ${h}`;
@@ -302,11 +376,12 @@
     const aspectPad = fullscreen
       ? ''
       : `\n  <div style="width:100%;padding-top:${ratio}%;pointer-events:none" aria-hidden="true"></div>`;
+    const pageAudioBoot = soundPage ? `\n${buildPageAudioScript('lite')}` : '';
 
-    return `<!-- GMC · lite field + animation · ${sizeLabel}${flowLabel}${randomLabel} · self-contained -->
+    return `<!-- GMC · lite field + animation · ${sizeLabel}${flowLabel}${randomLabel}${soundLabel} · self-contained -->
 <div class="gmc-lite${fullscreen ? ' gmc-lite--fullscreen' : ''}" style="${wrapStyle}"${fullscreen ? ' aria-hidden="true"' : ''}>${aspectPad}
   <canvas id="${uid}" width="${w}" height="${h}" style="${canvasStyle}"></canvas>
-</div>
+</div>${pageAudioBoot}
 <script>
 (function(){
   var C=${cfgJson};
@@ -457,6 +532,10 @@
   function frame(now){
     requestAnimationFrame(frame);
     var time=(now-t0)/1000;
+    var soundLevel=0;
+    if(C.soundPage&&C.soundAmt>0&&typeof window.__gmcPageAudioLevel==="function"){
+      soundLevel=window.__gmcPageAudioLevel();
+    }
     var rand=xorshift(C.seed);
     function rr(a,b){return a+rand()*(b-a);}
     function ri(a,b){return Math.floor(rr(a,b+0.9999));}
@@ -581,6 +660,12 @@
               var osc=1+Math.sin(time*C.dotOscSpeed*2.5-rdist*C.dotOscWave*Math.PI*2)*C.dotOscAmt;
               baseR*=Math.max(0,osc);
             }
+            if(C.soundPage&&C.soundAmt>0&&soundLevel>0.002){
+              var srdx=nx2-0.5,srdy=ny2-0.5,srdist=Math.sqrt(srdx*srdx+srdy*srdy);
+              var sphase=srdist*Math.PI*5+(col2*0.37+row2*0.21);
+              var kick=soundLevel*C.soundAmt;
+              baseR*=Math.max(0.05,1+kick*(0.35+0.65*(0.5+0.5*Math.sin(sphase+soundLevel*8))));
+            }
             baseR*=appearD;
             if(baseR<0.4)continue;
             var fill2=inflColor(infl,family);
@@ -704,16 +789,18 @@
     const full = isFullscreen();
     const flow = isFlowIn() || !!document.getElementById('flowIn')?.checked;
     const randomize = mode === 'lite' && isRandomOnLoad();
+    const soundPage = isSoundPage();
     const { w, h } = readDisplaySize();
     const state = captureState();
     const flowNote = flow ? ' · flow-in' : '';
     const randomNote = randomize ? ' · randomize on refresh' : '';
+    const soundNote = soundPage ? ' · page audio' : '';
 
     if (mode === 'lite') {
-      textArea.value = buildLiteAnimationEmbed(state, w, h, full, flow, randomize);
+      textArea.value = buildLiteAnimationEmbed(state, w, h, full, flow, randomize, soundPage);
       setStatus(full
-        ? `Lite field + animation · full browser screen${flowNote}${randomNote} · self-contained (no host URL)`
-        : `Lite field + animation · ${w}×${h}${flowNote}${randomNote} · self-contained (no host URL)`);
+        ? `Lite field + animation · full browser screen${flowNote}${randomNote}${soundNote} · self-contained (no host URL)`
+        : `Lite field + animation · ${w}×${h}${flowNote}${randomNote}${soundNote} · self-contained (no host URL)`);
       return;
     }
 
@@ -732,10 +819,10 @@
 
     rememberHost(host);
     const payload = encodeConfig(state);
-    textArea.value = buildIframeEmbed(payload, host, w, h, full, flow);
+    textArea.value = buildIframeEmbed(payload, host, w, h, full, flow, soundPage);
     setStatus(full
-      ? `Live player · full browser screen${flowNote} · paste into an HTML embed`
-      : `Live player · ${w}×${h}${flowNote} · paste into an HTML embed`);
+      ? `Live player · full browser screen${flowNote}${soundNote} · paste into an HTML embed`
+      : `Live player · ${w}×${h}${flowNote}${soundNote} · paste into an HTML embed`);
   }
 
   function openModal() {
@@ -768,6 +855,10 @@
     generate();
   });
   randomSeedInput?.addEventListener('change', () => {
+    syncModeUi();
+    generate();
+  });
+  soundPageInput?.addEventListener('change', () => {
     syncModeUi();
     generate();
   });
