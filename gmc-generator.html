@@ -478,7 +478,7 @@
         <span>React to page audio</span>
         <input type="checkbox" id="embed-sound-page" />
       </label>
-      <p class="embed-modal-hint">Dots pulse to page <code>&lt;audio&gt;</code>/<code>&lt;video&gt;</code> (Amount from Animate → Sound input). After paste, click the page once, play music, then in console run <code>__gmcPageAudioDebug()</code> — <code>hooked</code> should be &gt; 0. Won’t hear Spotify/SoundCloud/YouTube iframes.</p>
+      <p class="embed-modal-hint">Dots pulse to page audio (Amount from Animate → Sound input). Taps media elements + Web Audio; if neither is reachable, first click may ask for mic (picks up speakers). Console: <code>__gmcPageAudioDebug()</code> — check <code>source</code>/<code>level</code>. Won’t hear Spotify/SoundCloud/YouTube iframes.</p>
     </div>
     <div class="embed-modal-field" id="embed-host-field" hidden>
       <label for="embed-host">Player base URL</label>

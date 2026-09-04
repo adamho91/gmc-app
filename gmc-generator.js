@@ -150,9 +150,11 @@ const SoundInput = (() => {
   let freqData = null;
   let stream = null;
   let smoothed = 0;
+  let smoothedBass = 0;
+  let smoothedTreble = 0;
   let starting = null;
   let pageBridge = false;
-  let externalLevel = 0;
+  let externalBands = { bass: 0, treble: 0, level: 0 };
 
   function setStatus(text) {
     const el = document.getElementById('sound-status');
@@ -169,9 +171,15 @@ const SoundInput = (() => {
   function onPageAudioMessage(event) {
     const data = event?.data;
     if (!data || data.type !== 'gmc-2d-audio') return;
-    const n = Number(data.level);
-    if (!Number.isFinite(n)) return;
-    externalLevel = Math.max(0, Math.min(1, n));
+    const bass = Number(data.bass);
+    const treble = Number(data.treble);
+    const level = Number(data.level);
+    const b = Number.isFinite(bass) ? Math.max(0, Math.min(1, bass)) : 0;
+    const t = Number.isFinite(treble) ? Math.max(0, Math.min(1, treble)) : 0;
+    const l = Number.isFinite(level)
+      ? Math.max(0, Math.min(1, level))
+      : Math.max(b, t);
+    externalBands = { bass: b, treble: t, level: l };
   }
 
   function enablePageBridge() {
@@ -201,8 +209,8 @@ const SoundInput = (() => {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         const source = audioCtx.createMediaStreamSource(stream);
         analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 512;
-        analyser.smoothingTimeConstant = 0.55;
+        analyser.fftSize = 1024;
+        analyser.smoothingTimeConstant = 0.5;
         source.connect(analyser);
         freqData = new Uint8Array(analyser.frequencyBinCount);
         if (audioCtx.state === 'suspended') await audioCtx.resume();
@@ -233,26 +241,53 @@ const SoundInput = (() => {
     analyser = null;
     freqData = null;
     smoothed = 0;
+    smoothedBass = 0;
+    smoothedTreble = 0;
     if (!pageBridge) setStatus('');
   }
 
-  function readMicLevel() {
-    if (!analyser || !freqData) return 0;
+  function bandEnergy(start, end, scale) {
+    let sum = 0;
+    let peak = 0;
+    let n = 0;
+    const hi = Math.min(end, freqData.length);
+    for (let i = start; i < hi; i++) {
+      const v = freqData[i];
+      sum += v;
+      if (v > peak) peak = v;
+      n += 1;
+    }
+    if (!n) return 0;
+    return Math.min(1, Math.max((sum / n) / scale, peak / 255));
+  }
+
+  function readMicBands() {
+    if (!analyser || !freqData) return { bass: 0, treble: 0, level: 0 };
     if (audioCtx?.state === 'suspended') audioCtx.resume().catch(() => {});
     analyser.getByteFrequencyData(freqData);
-    const n = Math.min(40, freqData.length);
-    let sum = 0;
-    for (let i = 0; i < n; i++) sum += freqData[i] * (1.15 - i / n * 0.4);
-    const raw = Math.min(1, (sum / n) / 210);
-    smoothed += (raw - smoothed) * 0.38;
-    return smoothed;
+    const len = freqData.length;
+    // Low bins ≈ kick/bass; upper bins ≈ sparkle/treble (skip very top noise).
+    const bassRaw = bandEnergy(1, Math.max(8, Math.floor(len * 0.045)), 165);
+    const trebleRaw = bandEnergy(Math.floor(len * 0.22), Math.floor(len * 0.72), 150);
+    smoothedBass += (bassRaw - smoothedBass) * 0.4;
+    smoothedTreble += (trebleRaw - smoothedTreble) * 0.45;
+    smoothed = Math.max(smoothedBass, smoothedTreble);
+    return { bass: smoothedBass, treble: smoothedTreble, level: smoothed };
+  }
+
+  function bands() {
+    if (window.GMCGeneratorExporting) return { bass: 0, treble: 0, level: 0 };
+    const mic = readMicBands();
+    if (!pageBridge) return mic;
+    return {
+      bass: Math.max(mic.bass, externalBands.bass),
+      treble: Math.max(mic.treble, externalBands.treble),
+      level: Math.max(mic.level, externalBands.level),
+    };
   }
 
   function level() {
-    if (window.GMCGeneratorExporting) return 0;
-    const mic = readMicLevel();
-    if (pageBridge) return Math.max(mic, externalLevel);
-    return mic;
+    return bands().level;
   }
 
   function isLive() {
@@ -263,7 +298,7 @@ const SoundInput = (() => {
     return pageBridge;
   }
 
-  return { start, stop, level, isLive, enablePageBridge, isPageBridge, setStatus };
+  return { start, stop, level, bands, isLive, enablePageBridge, isPageBridge, setStatus };
 })();
 
 function syncFlowInFlag() {
@@ -434,7 +469,10 @@ function draw(newSeed, opts) {
   const dotOscWave = parseFloat(document.getElementById('dotOscWave').value);
   const soundIn    = !!document.getElementById('soundIn')?.checked || embedPageSound;
   const soundAmt   = parseFloat(document.getElementById('soundAmt')?.value || 0);
-  const soundLevel = (soundIn && soundAmt > 0 && SoundInput.isLive()) ? SoundInput.level() : 0;
+  const soundBands = (soundIn && soundAmt > 0 && SoundInput.isLive())
+    ? SoundInput.bands()
+    : { bass: 0, treble: 0, level: 0 };
+  const soundLevel = soundBands.level;
   const ovCount    = parseInt(document.getElementById('ovCount').value);
   const ovSize     = parseFloat(document.getElementById('ovSize').value);
   const ovOpacity  = parseFloat(document.getElementById('ovOpacity').value);
@@ -737,13 +775,15 @@ function draw(newSeed, opts) {
             const oscMul = 1 + Math.sin(animTime * dotOscSpeed * 2.5 - phase) * dotOscAmt;
             baseR *= Math.max(0, oscMul);
           }
-          // Mic level only scales radius — leaves warp / blobs / palettes untouched.
-          if (soundLevel > 0.002) {
+          // Bass → bigger dots; treble → smaller dots (infl ≈ size strength).
+          if (soundLevel > 0.002 || soundBands.bass > 0.002 || soundBands.treble > 0.002) {
+            const sizeT = Math.max(0, Math.min(1, infl));
+            const band = soundBands.bass * sizeT + soundBands.treble * (1 - sizeT);
             const rdx = nx - 0.5, rdy = ny - 0.5;
             const rdist = Math.sqrt(rdx * rdx + rdy * rdy);
             const phase = rdist * Math.PI * 5 + (col * 0.37 + row * 0.21);
-            const kick = soundLevel * soundAmt;
-            const soundMul = 1 + kick * (0.35 + 0.65 * (0.5 + 0.5 * Math.sin(phase + soundLevel * 8)));
+            const kick = band * soundAmt;
+            const soundMul = 1 + kick * (0.55 + 0.9 * (0.5 + 0.5 * Math.sin(phase + band * 8)));
             baseR *= Math.max(0.05, soundMul);
           }
           baseR *= appear;
