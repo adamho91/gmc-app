@@ -284,6 +284,15 @@
     color: #333333;
     font-variant-numeric: tabular-nums;
   }
+  #canvas-osc-controls .osc-hint {
+    margin: 4px 0 0;
+    font-size: 11px;
+    line-height: 1.35;
+    color: #666;
+  }
+  #canvas-osc-controls .osc-hint[hidden] {
+    display: none;
+  }
   #canvas-osc-controls input[type=range] {
     height: 2px;
     background: #d0d0d0;

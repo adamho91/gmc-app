@@ -142,6 +142,103 @@ const EMBED_FLOW_DUR = 0.78;
 const EMBED_FLOW_CLUMP = 5;
 const EMBED_FLOW_RISE = 0.22;
 
+/** Mic → smoothed 0–1 level for live canvas only (ignored during video export). */
+const SoundInput = (() => {
+  let audioCtx = null;
+  let analyser = null;
+  let freqData = null;
+  let stream = null;
+  let smoothed = 0;
+  let starting = null;
+
+  function setStatus(text) {
+    const el = document.getElementById('sound-status');
+    if (!el) return;
+    if (!text) {
+      el.hidden = true;
+      el.textContent = '';
+      return;
+    }
+    el.hidden = false;
+    el.textContent = text;
+  }
+
+  async function start() {
+    if (analyser) {
+      if (audioCtx?.state === 'suspended') await audioCtx.resume();
+      setStatus('Listening…');
+      return true;
+    }
+    if (starting) return starting;
+    starting = (async () => {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setStatus('Mic not supported in this browser.');
+        return false;
+      }
+      setStatus('Allow microphone…');
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: true },
+          video: false,
+        });
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const source = audioCtx.createMediaStreamSource(stream);
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 512;
+        analyser.smoothingTimeConstant = 0.55;
+        source.connect(analyser);
+        freqData = new Uint8Array(analyser.frequencyBinCount);
+        if (audioCtx.state === 'suspended') await audioCtx.resume();
+        setStatus('Listening…');
+        return true;
+      } catch (err) {
+        console.warn('Sound input failed', err);
+        stop();
+        setStatus('Mic permission denied.');
+        return false;
+      } finally {
+        starting = null;
+      }
+    })();
+    return starting;
+  }
+
+  function stop() {
+    starting = null;
+    if (stream) {
+      stream.getTracks().forEach((t) => t.stop());
+      stream = null;
+    }
+    if (audioCtx) {
+      try { audioCtx.close(); } catch (_) { /* ignore */ }
+      audioCtx = null;
+    }
+    analyser = null;
+    freqData = null;
+    smoothed = 0;
+    setStatus('');
+  }
+
+  function level() {
+    if (window.GMCGeneratorExporting || !analyser || !freqData) return 0;
+    if (audioCtx?.state === 'suspended') audioCtx.resume().catch(() => {});
+    analyser.getByteFrequencyData(freqData);
+    // Bias toward bass / low-mids so beats read clearly.
+    const n = Math.min(40, freqData.length);
+    let sum = 0;
+    for (let i = 0; i < n; i++) sum += freqData[i] * (1.15 - i / n * 0.4);
+    const raw = Math.min(1, (sum / n) / 210);
+    smoothed += (raw - smoothed) * 0.38;
+    return smoothed;
+  }
+
+  function isLive() {
+    return !!analyser;
+  }
+
+  return { start, stop, level, isLive, setStatus };
+})();
+
 function syncFlowInFlag() {
   embedFlowIn = !!document.getElementById('flowIn')?.checked || embedUrlFlowIn;
   return embedFlowIn;
@@ -308,6 +405,9 @@ function draw(newSeed, opts) {
   const dotOscSpeed= parseFloat(document.getElementById('dotOscSpeed').value);
   const dotOscAmt  = parseFloat(document.getElementById('dotOscAmt').value);
   const dotOscWave = parseFloat(document.getElementById('dotOscWave').value);
+  const soundIn    = !!document.getElementById('soundIn')?.checked;
+  const soundAmt   = parseFloat(document.getElementById('soundAmt')?.value || 0);
+  const soundLevel = (soundIn && soundAmt > 0 && SoundInput.isLive()) ? SoundInput.level() : 0;
   const ovCount    = parseInt(document.getElementById('ovCount').value);
   const ovSize     = parseFloat(document.getElementById('ovSize').value);
   const ovOpacity  = parseFloat(document.getElementById('ovOpacity').value);
@@ -609,6 +709,15 @@ function draw(newSeed, opts) {
             const phase = rdist * dotOscWave * Math.PI * 2;
             const oscMul = 1 + Math.sin(animTime * dotOscSpeed * 2.5 - phase) * dotOscAmt;
             baseR *= Math.max(0, oscMul);
+          }
+          // Mic level only scales radius — leaves warp / blobs / palettes untouched.
+          if (soundLevel > 0.002) {
+            const rdx = nx - 0.5, rdy = ny - 0.5;
+            const rdist = Math.sqrt(rdx * rdx + rdy * rdy);
+            const phase = rdist * Math.PI * 5 + (col * 0.37 + row * 0.21);
+            const kick = soundLevel * soundAmt;
+            const soundMul = 1 + kick * (0.35 + 0.65 * (0.5 + 0.5 * Math.sin(phase + soundLevel * 8)));
+            baseR *= Math.max(0.05, soundMul);
           }
           baseR *= appear;
           if (baseR < 0.4) continue;
@@ -923,6 +1032,7 @@ const SLIDERS = {
   megaCount:'v-mega', megaScale:'v-megascale', megaLobes:'v-lobes', lobeScatter:'v-lscatter', megaShape:'v-megashape',
   dotMax:'v-dotmax', dotMin:'v-dotmin',
   dotOscSpeed:'v-dotoscspeed', dotOscAmt:'v-dotoscamt', dotOscWave:'v-dotoscwave',
+  soundAmt:'v-soundamt',
   metaChains:'v-meta-chains', metaNodes:'v-meta-nodes', metaSize:'v-meta-size',
   metaSVar:'v-meta-svar', metaStep:'v-meta-step',
   metaRing:'v-meta-ring', metaOpacity:'v-meta-opacity',
@@ -958,6 +1068,21 @@ for (const [id, valId] of Object.entries(SLIDERS)) {
 
 document.getElementById('dotOsc').addEventListener('change', () => { saveCurrentState(); draw(); });
 document.getElementById('warpOsc').addEventListener('change', () => { saveCurrentState(); draw(); });
+document.getElementById('soundIn')?.addEventListener('change', async () => {
+  const on = document.getElementById('soundIn').checked;
+  if (on) {
+    const ok = await SoundInput.start();
+    if (!ok) {
+      document.getElementById('soundIn').checked = false;
+      saveCurrentState();
+      return;
+    }
+  } else {
+    SoundInput.stop();
+  }
+  saveCurrentState();
+  draw();
+});
 document.getElementById('flowIn')?.addEventListener('change', () => {
   saveCurrentState();
   restartFlowIn();
@@ -1022,7 +1147,7 @@ document.getElementById('btn-svg-copy').addEventListener('click', () => {
 const ALL_SLIDER_IDS = Object.keys(SLIDERS);
 const META_STROKE_IDS = new Set(['ends', 'deep', 'mix_deep', 'family_random', 'all_swatches', 'black', 'legacy_mid']);
 const ALL_SELECT_IDS = ['checkerStyle','palette','patType','patColor','patBlend','warpType','metaMode','metaColor','metaStroke'];
-const ALL_CHECKBOX_IDS = ['canvasPrimitiveLock', 'checkerGrid', 'dotOsc', 'warpOsc', 'flowIn'];
+const ALL_CHECKBOX_IDS = ['canvasPrimitiveLock', 'checkerGrid', 'dotOsc', 'warpOsc', 'flowIn', 'soundIn'];
 const LS_STATE_KEY   = 'gmc_state';
 const LS_PRESETS_KEY = 'gmc_presets';
 const IDB_NAME = 'gmc-generator';
@@ -1235,6 +1360,10 @@ function applyState(state) {
     const el = document.getElementById(id);
     if (el && state[id] !== undefined) el.checked = !!state[id];
   });
+  // Mic needs a fresh user gesture — never auto-arm from presets/local state.
+  const soundEl = document.getElementById('soundIn');
+  if (soundEl) soundEl.checked = false;
+  SoundInput.stop();
   if (state.rows === undefined && state.cols !== undefined) syncRowsControl(state.cols);
   syncCheckerGridUi();
   if (state.seed !== undefined) currentSeed = state.seed;
@@ -1490,9 +1619,12 @@ function animFrame(now) {
   const warpOscOn = document.getElementById('warpOsc').checked &&
                     parseFloat(document.getElementById('warpOscSpeed').value) > 0 &&
                     parseFloat(document.getElementById('warpOscAmt').value) > 0;
+  const soundOn = document.getElementById('soundIn')?.checked &&
+                  parseFloat(document.getElementById('soundAmt')?.value || 0) > 0 &&
+                  SoundInput.isLive();
   const chainsMoving = mode !== 'off' && (drift > 0 || pulse > 0 || flow > 0);
   const introActive = syncFlowInFlag() && animTime < EMBED_FLOW_DUR + EMBED_FLOW_RISE + 0.15;
-  if (chainsMoving || dotOscOn || warpOscOn || introActive) {
+  if (chainsMoving || dotOscOn || warpOscOn || soundOn || introActive) {
     animTime += dt;
     draw();
   }
