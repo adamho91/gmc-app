@@ -356,6 +356,17 @@
 
     <div class="osc-group">
       <div class="osc-toggle-row">
+        <label for="mouseIn">Mouse field</label>
+        <label class="switch"><input type="checkbox" id="mouseIn"><span class="track"></span></label>
+      </div>
+      <div class="osc-slider">
+        <label>Amount <span id="v-mouseamt">0.55</span></label>
+        <input type="range" id="mouseAmt" min="0.0" max="1.5" value="0.55" step="0.01">
+      </div>
+    </div>
+
+    <div class="osc-group">
+      <div class="osc-toggle-row">
         <label for="flowIn">Flow in field</label>
         <label class="switch"><input type="checkbox" id="flowIn"><span class="track"></span></label>
       </div>
@@ -478,7 +489,14 @@
         <span>React to page audio</span>
         <input type="checkbox" id="embed-sound-page" />
       </label>
-      <p class="embed-modal-hint">Dots pulse to page audio (Amount from Animate → Sound input). Taps media elements + Web Audio; if neither is reachable, first click may ask for mic (picks up speakers). Console: <code>__gmcPageAudioDebug()</code> — check <code>source</code>/<code>level</code>. Won’t hear Spotify/SoundCloud/YouTube iframes.</p>
+      <p class="embed-modal-hint">Dots pulse to page audio (Amount from Animate → Sound input). Uses a non-destructive tap (<code>captureStream</code>) so host audio keeps playing; if that isn’t available, first click may ask for mic. Console: <code>__gmcPageAudioDebug()</code>. Won’t hear Spotify/SoundCloud/YouTube iframes.</p>
+    </div>
+    <div class="embed-modal-field" id="embed-mouse-field">
+      <label class="embed-toggle-row" for="embed-mouse">
+        <span>Mouse field</span>
+        <input type="checkbox" id="embed-mouse" />
+      </label>
+      <p class="embed-modal-hint">Lite only — dots swell near the cursor (Amount from Animate → Mouse field). Works with fullscreen / pointer-events none.</p>
     </div>
     <div class="embed-modal-field" id="embed-host-field" hidden>
       <label for="embed-host">Player base URL</label>

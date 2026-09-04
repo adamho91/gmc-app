@@ -139,6 +139,8 @@ let animTime = 0;
 let embedUrlFlowIn = false;
 let embedFlowIn = false;
 let embedPageSound = false;
+/** Normalized pointer over the canvas (0–1). */
+const pointerField = { x: 0.5, y: 0.5, active: false };
 const EMBED_FLOW_DUR = 0.78;
 const EMBED_FLOW_CLUMP = 5;
 const EMBED_FLOW_RISE = 0.22;
@@ -473,6 +475,9 @@ function draw(newSeed, opts) {
     ? SoundInput.bands()
     : { bass: 0, treble: 0, level: 0 };
   const soundLevel = soundBands.level;
+  const mouseIn    = !!document.getElementById('mouseIn')?.checked;
+  const mouseAmt   = parseFloat(document.getElementById('mouseAmt')?.value || 0);
+  const mouseLive  = mouseIn && mouseAmt > 0 && pointerField.active && !window.GMCGeneratorExporting;
   const ovCount    = parseInt(document.getElementById('ovCount').value);
   const ovSize     = parseFloat(document.getElementById('ovSize').value);
   const ovOpacity  = parseFloat(document.getElementById('ovOpacity').value);
@@ -785,6 +790,17 @@ function draw(newSeed, opts) {
             const kick = band * soundAmt;
             const soundMul = 1 + kick * (0.55 + 0.9 * (0.5 + 0.5 * Math.sin(phase + band * 8)));
             baseR *= Math.max(0.05, soundMul);
+          }
+          // Near cursor swells; farther dots ease slightly smaller.
+          if (mouseLive) {
+            const mdx = nx - pointerField.x;
+            const mdy = ny - pointerField.y;
+            const mdist = Math.sqrt(mdx * mdx + mdy * mdy);
+            const radius = 0.22 + mouseAmt * 0.28;
+            const prox = Math.max(0, 1 - mdist / Math.max(0.08, radius));
+            const soft = prox * prox * (3 - 2 * prox);
+            const mouseMul = 1 + (soft * 1.15 - (1 - soft) * 0.22) * mouseAmt;
+            baseR *= Math.max(0.05, mouseMul);
           }
           baseR *= appear;
           if (baseR < 0.4) continue;
@@ -1100,6 +1116,7 @@ const SLIDERS = {
   dotMax:'v-dotmax', dotMin:'v-dotmin',
   dotOscSpeed:'v-dotoscspeed', dotOscAmt:'v-dotoscamt', dotOscWave:'v-dotoscwave',
   soundAmt:'v-soundamt',
+  mouseAmt:'v-mouseamt',
   metaChains:'v-meta-chains', metaNodes:'v-meta-nodes', metaSize:'v-meta-size',
   metaSVar:'v-meta-svar', metaStep:'v-meta-step',
   metaRing:'v-meta-ring', metaOpacity:'v-meta-opacity',
@@ -1147,6 +1164,10 @@ document.getElementById('soundIn')?.addEventListener('change', async () => {
   } else {
     SoundInput.stop();
   }
+  saveCurrentState();
+  draw();
+});
+document.getElementById('mouseIn')?.addEventListener('change', () => {
   saveCurrentState();
   draw();
 });
@@ -1214,7 +1235,7 @@ document.getElementById('btn-svg-copy').addEventListener('click', () => {
 const ALL_SLIDER_IDS = Object.keys(SLIDERS);
 const META_STROKE_IDS = new Set(['ends', 'deep', 'mix_deep', 'family_random', 'all_swatches', 'black', 'legacy_mid']);
 const ALL_SELECT_IDS = ['checkerStyle','palette','patType','patColor','patBlend','warpType','metaMode','metaColor','metaStroke'];
-const ALL_CHECKBOX_IDS = ['canvasPrimitiveLock', 'checkerGrid', 'dotOsc', 'warpOsc', 'flowIn', 'soundIn'];
+const ALL_CHECKBOX_IDS = ['canvasPrimitiveLock', 'checkerGrid', 'dotOsc', 'warpOsc', 'flowIn', 'soundIn', 'mouseIn'];
 const LS_STATE_KEY   = 'gmc_state';
 const LS_PRESETS_KEY = 'gmc_presets';
 const IDB_NAME = 'gmc-generator';
@@ -1692,14 +1713,40 @@ function animFrame(now) {
   const soundOn = ((document.getElementById('soundIn')?.checked || embedPageSound) &&
                   parseFloat(document.getElementById('soundAmt')?.value || 0) > 0 &&
                   SoundInput.isLive());
+  const mouseOn = document.getElementById('mouseIn')?.checked &&
+                  parseFloat(document.getElementById('mouseAmt')?.value || 0) > 0 &&
+                  pointerField.active;
   const chainsMoving = mode !== 'off' && (drift > 0 || pulse > 0 || flow > 0);
   const introActive = syncFlowInFlag() && animTime < EMBED_FLOW_DUR + EMBED_FLOW_RISE + 0.15;
-  if (chainsMoving || dotOscOn || warpOscOn || soundOn || introActive) {
+  if (chainsMoving || dotOscOn || warpOscOn || soundOn || mouseOn || introActive) {
     animTime += dt;
     draw();
   }
 }
 requestAnimationFrame(animFrame);
+
+function updatePointerField(clientX, clientY) {
+  const el = canvas;
+  if (!el) return;
+  const rect = el.getBoundingClientRect();
+  if (rect.width < 1 || rect.height < 1) return;
+  pointerField.x = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+  pointerField.y = Math.max(0, Math.min(1, (clientY - rect.top) / rect.height));
+  pointerField.active = true;
+}
+
+function wirePointerField() {
+  const onMove = (e) => {
+    if (!document.getElementById('mouseIn')?.checked) return;
+    if (window.GMCGeneratorExporting) return;
+    const pt = e.touches && e.touches[0] ? e.touches[0] : e;
+    if (pt && Number.isFinite(pt.clientX)) updatePointerField(pt.clientX, pt.clientY);
+  };
+  window.addEventListener('pointermove', onMove, { passive: true });
+  window.addEventListener('mousemove', onMove, { passive: true });
+  window.addEventListener('touchmove', onMove, { passive: true });
+}
+wirePointerField();
 
 function revealEmbedIfNeeded() {
   const root = document.documentElement;

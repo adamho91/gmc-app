@@ -9,6 +9,8 @@
   const flowInInput = document.getElementById('embed-flow-in');
   const randomSeedInput = document.getElementById('embed-random-seed');
   const soundPageInput = document.getElementById('embed-sound-page');
+  const mouseFieldInput = document.getElementById('embed-mouse');
+  const mouseField = document.getElementById('embed-mouse-field');
   const randomField = document.getElementById('embed-random-field');
   const widthInput = document.getElementById('embed-display-w');
   const heightInput = document.getElementById('embed-display-h');
@@ -26,6 +28,7 @@
   const FLOW_KEY = 'gmc-2d-embed-flow-in';
   const RANDOM_KEY = 'gmc-2d-embed-random-seed';
   const SOUND_KEY = 'gmc-2d-embed-sound-page';
+  const MOUSE_KEY = 'gmc-2d-embed-mouse';
 
   function setStatus(message) {
     if (status) status.textContent = message || '';
@@ -57,6 +60,10 @@
 
   function isSoundPage() {
     return !!soundPageInput?.checked;
+  }
+
+  function isMouseField() {
+    return !!mouseFieldInput?.checked;
   }
 
   function detectHostUrl() {
@@ -98,12 +105,14 @@
     if (hostField) hostField.hidden = mode !== 'live';
     if (sizeRow) sizeRow.hidden = full;
     if (randomField) randomField.hidden = mode !== 'lite';
+    if (mouseField) mouseField.hidden = mode !== 'lite';
     try {
       localStorage.setItem(MODE_KEY, mode);
       localStorage.setItem(FULL_KEY, full ? '1' : '0');
       localStorage.setItem(FLOW_KEY, isFlowIn() ? '1' : '0');
       localStorage.setItem(RANDOM_KEY, isRandomOnLoad() ? '1' : '0');
       localStorage.setItem(SOUND_KEY, isSoundPage() ? '1' : '0');
+      localStorage.setItem(MOUSE_KEY, isMouseField() ? '1' : '0');
     } catch (_) {}
   }
 
@@ -129,6 +138,9 @@
       if (soundPageInput) soundPageInput.checked = localStorage.getItem(SOUND_KEY) === '1';
     } catch (_) {}
     try {
+      if (mouseFieldInput) mouseFieldInput.checked = localStorage.getItem(MOUSE_KEY) === '1';
+    } catch (_) {}
+    try {
       const raw = localStorage.getItem(SIZE_KEY);
       if (raw) {
         const { w, h } = JSON.parse(raw);
@@ -151,7 +163,11 @@
     return `${base}/gmc-generator.html?embed=1${fill}${flow}${sound}&c=${encodeURIComponent(payload)}`;
   }
 
-  /** Tap host-page media / Web Audio for levels. mode: "lite" exposes reader; "live" postMessages iframes. */
+  /**
+   * Non-destructive page-audio tap.
+   * Never uses createMediaElementSource / AudioNode.connect patches — those mute host players.
+   * Uses captureStream() copy when possible; otherwise mic fallback after a user gesture.
+   */
   function buildPageAudioScript(mode) {
     const pushLive = mode === 'live'
       ? `function push(){var b=readBands();var frames=document.querySelectorAll(".gmc-2d-embed iframe");for(var i=0;i<frames.length;i++){try{frames[i].contentWindow.postMessage({type:"gmc-2d-audio",level:b.level,bass:b.bass,treble:b.treble},"*");}catch(e){}}requestAnimationFrame(push);}requestAnimationFrame(push);`
@@ -162,7 +178,7 @@
   window.__gmcPageAudioBooted=1;
   var ctx=null,analyser=null,freqData=null,timeData=null;
   var smoothed=0,smoothedBass=0,smoothedTreble=0;
-  var hooked=[],tracked=[],taps=[],lastErr="",hookCount=0,sourceMode="none",micStarted=false;
+  var hooked=[],tracked=[],lastErr="",hookCount=0,sourceMode="none",micStarted=false;
 
   function ensure(){
     if(ctx)return!!analyser;
@@ -181,56 +197,6 @@
     return true;
   }
 
-  function addTap(actx, an){
-    if(!actx||!an||actx.__gmcTapRegistered)return;
-    actx.__gmcTapRegistered=1;
-    taps.push({
-      ctx:actx,
-      analyser:an,
-      freq:new Uint8Array(an.frequencyBinCount),
-      time:new Uint8Array(an.fftSize)
-    });
-    if(sourceMode==="none")sourceMode="webaudio";
-  }
-
-  function installCtxTap(actx){
-    if(!actx||actx.__gmcTapAnalyser)return actx&&actx.__gmcTapAnalyser;
-    try{
-      var an=actx.createAnalyser();
-      an.fftSize=2048;
-      an.smoothingTimeConstant=0.45;
-      an.__gmcIsTapNode=1;
-      var g=actx.createGain();
-      g.__gmcIsTapNode=1;
-      g.gain.value=1;
-      var orig=AudioNode.prototype.__gmcOrigConnect||AudioNode.prototype.connect;
-      orig.call(an,g);
-      orig.call(g,actx.destination);
-      actx.__gmcTapAnalyser=an;
-      addTap(actx,an);
-      return an;
-    }catch(e){lastErr=String(e&&e.message||e);return null;}
-  }
-
-  try{
-    if(typeof AudioNode!=="undefined"&&AudioNode.prototype&&!AudioNode.prototype.__gmcConnectPatched){
-      var origConnect=AudioNode.prototype.connect;
-      AudioNode.prototype.__gmcOrigConnect=origConnect;
-      AudioNode.prototype.connect=function(){
-        var dest=arguments[0];
-        var actx=this.context;
-        if(actx&&dest===actx.destination&&!this.__gmcIsTapNode){
-          try{
-            var tap=installCtxTap(actx);
-            if(tap)return origConnect.call(this,tap);
-          }catch(e){lastErr=String(e&&e.message||e);}
-        }
-        return origConnect.apply(this,arguments);
-      };
-      AudioNode.prototype.__gmcConnectPatched=1;
-    }
-  }catch(e){}
-
   function isMedia(el){
     return!!(el&&(el.tagName==="AUDIO"||el.tagName==="VIDEO"||(typeof HTMLMediaElement!=="undefined"&&el instanceof HTMLMediaElement)));
   }
@@ -239,42 +205,49 @@
     if(!isMedia(el))return;
     if(tracked.indexOf(el)>=0)return;
     tracked.push(el);
-    ["play","playing","loadeddata"].forEach(function(ev){
-      try{el.addEventListener(ev,function(){hook(el);unlock();},true);}catch(e){}
+    ["playing","play"].forEach(function(ev){
+      try{el.addEventListener(ev,function(){hook(el);},true);}catch(e){}
     });
   }
 
+  /* captureStream only — does not steal element output (unlike createMediaElementSource). */
   function hook(el){
     if(!isMedia(el))return false;
     trackMedia(el);
     if(hooked.indexOf(el)>=0)return true;
+    if(typeof el.captureStream!=="function"){
+      lastErr="captureStream unsupported";
+      return false;
+    }
     if(!ensure()||!ctx||!analyser)return false;
+    if(ctx.state==="suspended")ctx.resume();
     try{
-      if(typeof el.captureStream==="function"){
-        var stream=el.captureStream();
-        var tracks=stream&&stream.getAudioTracks?stream.getAudioTracks():[];
-        if(tracks&&tracks.length){
-          ctx.createMediaStreamSource(stream).connect(analyser);
-          hooked.push(el);hookCount++;
-          sourceMode="media";
-          return true;
-        }
+      var stream=el.captureStream();
+      var tracks=stream&&stream.getAudioTracks?stream.getAudioTracks():[];
+      if(!tracks||!tracks.length){
+        lastErr="captureStream has no audio tracks yet";
+        return false;
       }
-    }catch(e1){lastErr=String(e1&&e1.message||e1);}
-    try{
-      var src=ctx.createMediaElementSource(el);
-      src.connect(analyser);
-      src.connect(ctx.destination);
-      hooked.push(el);hookCount++;
+      ctx.createMediaStreamSource(stream).connect(analyser);
+      hooked.push(el);
+      hookCount++;
       sourceMode="media";
       return true;
-    }catch(e2){lastErr=String(e2&&e2.message||e2);return false;}
+    }catch(e){
+      lastErr=String(e&&e.message||e);
+      return false;
+    }
   }
 
   function scan(){
     var list=document.querySelectorAll("audio,video");
-    for(var i=0;i<list.length;i++)hook(list[i]);
-    for(var j=0;j<tracked.length;j++)hook(tracked[j]);
+    for(var i=0;i<list.length;i++){
+      trackMedia(list[i]);
+      if(!list[i].paused)hook(list[i]);
+    }
+    for(var j=0;j<tracked.length;j++){
+      if(!tracked[j].paused)hook(tracked[j]);
+    }
   }
 
   function startMicFallback(){
@@ -285,6 +258,7 @@
       video:false
     }).then(function(stream){
       if(!ensure())return;
+      if(ctx.state==="suspended")ctx.resume();
       ctx.createMediaStreamSource(stream).connect(analyser);
       sourceMode="mic";
       hookCount++;
@@ -322,17 +296,10 @@
 
   function readBands(){
     if(ctx&&ctx.state==="suspended")ctx.resume();
-    for(var ti=0;ti<taps.length;ti++){
-      if(taps[ti].ctx&&taps[ti].ctx.state==="suspended")taps[ti].ctx.resume();
-    }
     var bassRaw=0,trebleRaw=0,rmsRaw=0,s;
     if(analyser&&freqData){
       s=sampleAnalyser(analyser,freqData,timeData);
-      bassRaw=Math.max(bassRaw,s.bass);trebleRaw=Math.max(trebleRaw,s.treble);rmsRaw=Math.max(rmsRaw,s.rms);
-    }
-    for(var i=0;i<taps.length;i++){
-      s=sampleAnalyser(taps[i].analyser,taps[i].freq,taps[i].time);
-      bassRaw=Math.max(bassRaw,s.bass);trebleRaw=Math.max(trebleRaw,s.treble);rmsRaw=Math.max(rmsRaw,s.rms);
+      bassRaw=s.bass;trebleRaw=s.treble;rmsRaw=s.rms;
     }
     bassRaw=Math.min(1,Math.max(bassRaw,rmsRaw*0.7));
     trebleRaw=Math.min(1,Math.max(trebleRaw,rmsRaw*0.35));
@@ -346,7 +313,7 @@
     ensure();
     if(ctx&&ctx.state==="suspended")ctx.resume();
     scan();
-    if(hookCount===0&&taps.length===0)startMicFallback();
+    if(hookCount===0)startMicFallback();
   }
 
   try{
@@ -354,30 +321,23 @@
     if(proto&&!proto.__gmcPlayPatched){
       var origPlay=proto.play;
       proto.play=function(){
-        try{trackMedia(this);hook(this);unlock();}catch(e){}
-        return origPlay.apply(this,arguments);
+        var el=this;
+        var ret=origPlay.apply(this,arguments);
+        try{
+          trackMedia(el);
+          Promise.resolve(ret).then(function(){hook(el);},function(){hook(el);});
+        }catch(e){}
+        return ret;
       };
       proto.__gmcPlayPatched=1;
-    }
-  }catch(e){}
-
-  try{
-    if(typeof window.Audio==="function"&&!window.Audio.__gmcPatched){
-      var OrigAudio=window.Audio;
-      window.Audio=function(){
-        var el=arguments.length?new OrigAudio(arguments[0]):new OrigAudio();
-        try{trackMedia(el);}catch(e){}
-        return el;
-      };
-      window.Audio.prototype=OrigAudio.prototype;
-      window.Audio.__gmcPatched=1;
     }
   }catch(e){}
 
   ["pointerdown","keydown","touchstart","click"].forEach(function(ev){
     window.addEventListener(ev,unlock,{passive:true,capture:true});
   });
-  document.addEventListener("play",function(e){hook(e.target);unlock();},true);
+  document.addEventListener("play",function(e){trackMedia(e.target);hook(e.target);},true);
+  document.addEventListener("playing",function(e){hook(e.target);},true);
   if(typeof MutationObserver!=="undefined"){
     try{
       new MutationObserver(function(muts){
@@ -386,10 +346,10 @@
           for(var n=0;n<nodes.length;n++){
             var node=nodes[n];
             if(!node)continue;
-            if(isMedia(node))hook(node);
+            if(isMedia(node))trackMedia(node);
             if(node.querySelectorAll){
               var found=node.querySelectorAll("audio,video");
-              for(var fi=0;fi<found.length;fi++)hook(found[fi]);
+              for(var fi=0;fi<found.length;fi++)trackMedia(found[fi]);
             }
           }
         }
@@ -397,11 +357,11 @@
     }catch(e){}
   }
   scan();
-  setInterval(scan,1200);
+  setInterval(scan,1500);
   window.__gmcPageAudioDebug=function(){
     var b=readBands();
     return{
-      hooked:hooked.length,tracked:tracked.length,taps:taps.length,hookCount:hookCount,
+      hooked:hooked.length,tracked:tracked.length,hookCount:hookCount,
       source:sourceMode,level:b.level,bass:b.bass,treble:b.treble,
       ctx:ctx&&ctx.state,err:lastErr,media:document.querySelectorAll("audio,video").length
     };
@@ -493,7 +453,7 @@
   }
 
   /** Self-contained canvas — checker + dots + meta animation (no iframe / full app). */
-  function buildLiteAnimationEmbed(state, w, h, fullscreen, flowIn, randomOnLoad, soundPage) {
+  function buildLiteAnimationEmbed(state, w, h, fullscreen, flowIn, randomOnLoad, soundPage, mouseFieldOn) {
     const seed = Number(state.seed) || 1;
     const cols = Math.max(4, Math.round(num(state, 'cols', 35)));
     const rows = Math.max(4, Math.round(num(state, 'rows', Math.round(cols * (h / w)))));
@@ -512,6 +472,8 @@
       randomOnLoad: !!randomOnLoad,
       soundPage: !!soundPage,
       soundAmt: num(state, 'soundAmt', 0.65),
+      mouseIn: !!mouseFieldOn,
+      mouseAmt: num(state, 'mouseAmt', 0.55),
       bgA,
       bgB,
       families,
@@ -569,6 +531,7 @@
     const flowLabel = flowIn ? ' · flow-in' : '';
     const randomLabel = randomOnLoad ? ' · randomize' : '';
     const soundLabel = soundPage ? ' · page audio' : '';
+    const mouseLabel = mouseFieldOn ? ' · mouse field' : '';
     const wrapStyle = fullscreen
       ? 'position:fixed;inset:0;width:100%;height:100%;margin:0;line-height:0;background:transparent;z-index:0;pointer-events:none;overflow:hidden'
       : `width:100%;max-width:${w}px;margin:0 auto;position:relative;line-height:0;background:transparent;aspect-ratio:${w} / ${h}`;
@@ -580,7 +543,7 @@
       : `\n  <div style="width:100%;padding-top:${ratio}%;pointer-events:none" aria-hidden="true"></div>`;
     const pageAudioBoot = soundPage ? `\n${buildPageAudioScript('lite')}` : '';
 
-    return `<!-- GMC · lite field + animation · ${sizeLabel}${flowLabel}${randomLabel}${soundLabel} · self-contained -->
+    return `<!-- GMC · lite field + animation · ${sizeLabel}${flowLabel}${randomLabel}${soundLabel}${mouseLabel} · self-contained -->
 <div class="gmc-lite${fullscreen ? ' gmc-lite--fullscreen' : ''}" style="${wrapStyle}"${fullscreen ? ' aria-hidden="true"' : ''}>${aspectPad}
   <canvas id="${uid}" width="${w}" height="${h}" style="${canvasStyle}"></canvas>
 </div>${pageAudioBoot}
@@ -603,6 +566,23 @@
   var designAspect=(C.w>0&&C.h>0)?(C.w/C.h):1;
   var designCols=COLS;
   var designRows=Math.max(4,ROWS);
+  var pointer={x:0.5,y:0.5,active:false};
+  function updatePointer(clientX,clientY){
+    var rect=canvas.getBoundingClientRect();
+    if(rect.width<1||rect.height<1)return;
+    pointer.x=Math.max(0,Math.min(1,(clientX-rect.left)/rect.width));
+    pointer.y=Math.max(0,Math.min(1,(clientY-rect.top)/rect.height));
+    pointer.active=true;
+  }
+  if(C.mouseIn&&C.mouseAmt>0){
+    var onPtr=function(e){
+      var pt=e.touches&&e.touches[0]?e.touches[0]:e;
+      if(pt&&isFinite(pt.clientX))updatePointer(pt.clientX,pt.clientY);
+    };
+    window.addEventListener("pointermove",onPtr,{passive:true});
+    window.addEventListener("mousemove",onPtr,{passive:true});
+    window.addEventListener("touchmove",onPtr,{passive:true});
+  }
 
   function viewportSize(){
     var vv=window.visualViewport;
@@ -875,6 +855,14 @@
               var kick=band*C.soundAmt;
               baseR*=Math.max(0.05,1+kick*(0.55+0.9*(0.5+0.5*Math.sin(sphase+band*8))));
             }
+            if(C.mouseIn&&C.mouseAmt>0&&pointer.active){
+              var mdx=nx2-pointer.x,mdy=ny2-pointer.y;
+              var mdist=Math.sqrt(mdx*mdx+mdy*mdy);
+              var radius=0.22+C.mouseAmt*0.28;
+              var prox=Math.max(0,1-mdist/Math.max(0.08,radius));
+              var soft=prox*prox*(3-2*prox);
+              baseR*=Math.max(0.05,1+(soft*1.15-(1-soft)*0.22)*C.mouseAmt);
+            }
             baseR*=appearD;
             if(baseR<0.4)continue;
             var fill2=inflColor(infl,family);
@@ -999,17 +987,19 @@
     const flow = isFlowIn() || !!document.getElementById('flowIn')?.checked;
     const randomize = mode === 'lite' && isRandomOnLoad();
     const soundPage = isSoundPage();
+    const mouseFieldOn = mode === 'lite' && isMouseField();
     const { w, h } = readDisplaySize();
     const state = captureState();
     const flowNote = flow ? ' · flow-in' : '';
     const randomNote = randomize ? ' · randomize on refresh' : '';
     const soundNote = soundPage ? ' · page audio' : '';
+    const mouseNote = mouseFieldOn ? ' · mouse field' : '';
 
     if (mode === 'lite') {
-      textArea.value = buildLiteAnimationEmbed(state, w, h, full, flow, randomize, soundPage);
+      textArea.value = buildLiteAnimationEmbed(state, w, h, full, flow, randomize, soundPage, mouseFieldOn);
       setStatus(full
-        ? `Lite field + animation · full browser screen${flowNote}${randomNote}${soundNote} · self-contained (no host URL)`
-        : `Lite field + animation · ${w}×${h}${flowNote}${randomNote}${soundNote} · self-contained (no host URL)`);
+        ? `Lite field + animation · full browser screen${flowNote}${randomNote}${soundNote}${mouseNote} · self-contained (no host URL)`
+        : `Lite field + animation · ${w}×${h}${flowNote}${randomNote}${soundNote}${mouseNote} · self-contained (no host URL)`);
       return;
     }
 
@@ -1068,6 +1058,10 @@
     generate();
   });
   soundPageInput?.addEventListener('change', () => {
+    syncModeUi();
+    generate();
+  });
+  mouseFieldInput?.addEventListener('change', () => {
     syncModeUi();
     generate();
   });
