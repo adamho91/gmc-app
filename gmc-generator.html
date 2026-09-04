@@ -486,10 +486,15 @@
     </div>
     <div class="embed-modal-field">
       <label class="embed-toggle-row" for="embed-sound-page">
-        <span>React to page audio</span>
+        <span>React to audio track</span>
         <input type="checkbox" id="embed-sound-page" />
       </label>
-      <p class="embed-modal-hint">Dots pulse to page audio (Amount from Animate → Sound input). Uses a non-destructive tap (<code>captureStream</code>) so host audio keeps playing; if that isn’t available, first click may ask for mic. Console: <code>__gmcPageAudioDebug()</code>. Won’t hear Spotify/SoundCloud/YouTube iframes.</p>
+      <p class="embed-modal-hint">Dots pulse to a track URL (Amount from Animate → Sound input). No microphone permission.</p>
+    </div>
+    <div class="embed-modal-field" id="embed-sound-url-field" hidden>
+      <label for="embed-sound-url">Audio track URL</label>
+      <input type="url" id="embed-sound-url" placeholder="https://yoursite.com/track.mp3" autocomplete="off" spellcheck="false" />
+      <p class="embed-modal-hint">Direct <code>.mp3</code>/<code>.wav</code>/<code>.m4a</code> link (same-origin or CORS-enabled). Embed plays + analyses this file on first click — mute any duplicate player on the page.</p>
     </div>
     <div class="embed-modal-field" id="embed-mouse-field">
       <label class="embed-toggle-row" for="embed-mouse">

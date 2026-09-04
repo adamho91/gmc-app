@@ -9,6 +9,8 @@
   const flowInInput = document.getElementById('embed-flow-in');
   const randomSeedInput = document.getElementById('embed-random-seed');
   const soundPageInput = document.getElementById('embed-sound-page');
+  const soundUrlInput = document.getElementById('embed-sound-url');
+  const soundUrlField = document.getElementById('embed-sound-url-field');
   const mouseFieldInput = document.getElementById('embed-mouse');
   const mouseField = document.getElementById('embed-mouse-field');
   const randomField = document.getElementById('embed-random-field');
@@ -28,6 +30,7 @@
   const FLOW_KEY = 'gmc-2d-embed-flow-in';
   const RANDOM_KEY = 'gmc-2d-embed-random-seed';
   const SOUND_KEY = 'gmc-2d-embed-sound-page';
+  const SOUND_URL_KEY = 'gmc-2d-embed-sound-url';
   const MOUSE_KEY = 'gmc-2d-embed-mouse';
 
   function setStatus(message) {
@@ -60,6 +63,15 @@
 
   function isSoundPage() {
     return !!soundPageInput?.checked;
+  }
+
+  function readSoundUrl() {
+    const url = String(soundUrlInput?.value || '').trim();
+    if (soundUrlInput) soundUrlInput.value = url;
+    try {
+      if (url) localStorage.setItem(SOUND_URL_KEY, url);
+    } catch (_) {}
+    return url;
   }
 
   function isMouseField() {
@@ -106,6 +118,7 @@
     if (sizeRow) sizeRow.hidden = full;
     if (randomField) randomField.hidden = mode !== 'lite';
     if (mouseField) mouseField.hidden = mode !== 'lite';
+    if (soundUrlField) soundUrlField.hidden = !isSoundPage();
     try {
       localStorage.setItem(MODE_KEY, mode);
       localStorage.setItem(FULL_KEY, full ? '1' : '0');
@@ -113,6 +126,8 @@
       localStorage.setItem(RANDOM_KEY, isRandomOnLoad() ? '1' : '0');
       localStorage.setItem(SOUND_KEY, isSoundPage() ? '1' : '0');
       localStorage.setItem(MOUSE_KEY, isMouseField() ? '1' : '0');
+      const url = String(soundUrlInput?.value || '').trim();
+      if (url) localStorage.setItem(SOUND_URL_KEY, url);
     } catch (_) {}
   }
 
@@ -136,6 +151,11 @@
     } catch (_) {}
     try {
       if (soundPageInput) soundPageInput.checked = localStorage.getItem(SOUND_KEY) === '1';
+    } catch (_) {}
+    try {
+      if (soundUrlInput && !soundUrlInput.value) {
+        soundUrlInput.value = localStorage.getItem(SOUND_URL_KEY) || '';
+      }
     } catch (_) {}
     try {
       if (mouseFieldInput) mouseFieldInput.checked = localStorage.getItem(MOUSE_KEY) === '1';
@@ -164,11 +184,11 @@
   }
 
   /**
-   * Non-destructive page-audio tap.
-   * Never uses createMediaElementSource / AudioNode.connect patches — those mute host players.
-   * Uses captureStream() copy when possible; otherwise mic fallback after a user gesture.
+   * Analyse a track URL (no mic). Own <audio> → MediaElementSource on our graph only.
+   * First user click starts playback (autoplay policy) — never asks for microphone.
    */
-  function buildPageAudioScript(mode) {
+  function buildPageAudioScript(mode, soundUrl) {
+    const urlJson = JSON.stringify(String(soundUrl || '').trim());
     const pushLive = mode === 'live'
       ? `function push(){var b=readBands();var frames=document.querySelectorAll(".gmc-2d-embed iframe");for(var i=0;i<frames.length;i++){try{frames[i].contentWindow.postMessage({type:"gmc-2d-audio",level:b.level,bass:b.bass,treble:b.treble},"*");}catch(e){}}requestAnimationFrame(push);}requestAnimationFrame(push);`
       : `window.__gmcPageAudioLevel=function(){return readBands().level;};window.__gmcPageAudioBands=function(){return readBands();};`;
@@ -176,9 +196,9 @@
 (function(){
   if(window.__gmcPageAudioBooted)return;
   window.__gmcPageAudioBooted=1;
-  var ctx=null,analyser=null,freqData=null,timeData=null;
-  var smoothed=0,smoothedBass=0,smoothedTreble=0;
-  var hooked=[],tracked=[],lastErr="",hookCount=0,sourceMode="none",micStarted=false;
+  var TRACK_URL=${urlJson};
+  var ctx=null,analyser=null,freqData=null,timeData=null,trackEl=null,trackReady=false;
+  var smoothed=0,smoothedBass=0,smoothedTreble=0,lastErr="",sourceMode="none";
 
   function ensure(){
     if(ctx)return!!analyser;
@@ -190,79 +210,31 @@
     analyser.smoothingTimeConstant=0.45;
     freqData=new Uint8Array(analyser.frequencyBinCount);
     timeData=new Uint8Array(analyser.fftSize);
-    var sink=ctx.createGain();
-    sink.gain.value=0;
-    analyser.connect(sink);
-    sink.connect(ctx.destination);
     return true;
   }
 
-  function isMedia(el){
-    return!!(el&&(el.tagName==="AUDIO"||el.tagName==="VIDEO"||(typeof HTMLMediaElement!=="undefined"&&el instanceof HTMLMediaElement)));
-  }
-
-  function trackMedia(el){
-    if(!isMedia(el))return;
-    if(tracked.indexOf(el)>=0)return;
-    tracked.push(el);
-    ["playing","play"].forEach(function(ev){
-      try{el.addEventListener(ev,function(){hook(el);},true);}catch(e){}
-    });
-  }
-
-  /* captureStream only — does not steal element output (unlike createMediaElementSource). */
-  function hook(el){
-    if(!isMedia(el))return false;
-    trackMedia(el);
-    if(hooked.indexOf(el)>=0)return true;
-    if(typeof el.captureStream!=="function"){
-      lastErr="captureStream unsupported";
-      return false;
-    }
-    if(!ensure()||!ctx||!analyser)return false;
-    if(ctx.state==="suspended")ctx.resume();
+  function setupTrack(){
+    if(!TRACK_URL||trackReady)return trackReady;
+    if(!ensure())return false;
     try{
-      var stream=el.captureStream();
-      var tracks=stream&&stream.getAudioTracks?stream.getAudioTracks():[];
-      if(!tracks||!tracks.length){
-        lastErr="captureStream has no audio tracks yet";
-        return false;
-      }
-      ctx.createMediaStreamSource(stream).connect(analyser);
-      hooked.push(el);
-      hookCount++;
-      sourceMode="media";
+      trackEl=new Audio();
+      trackEl.crossOrigin="anonymous";
+      trackEl.preload="auto";
+      trackEl.loop=true;
+      trackEl.src=TRACK_URL;
+      trackEl.setAttribute("playsinline","");
+      trackEl.style.cssText="position:fixed;width:0;height:0;opacity:0;pointer-events:none";
+      document.documentElement.appendChild(trackEl);
+      var src=ctx.createMediaElementSource(trackEl);
+      src.connect(analyser);
+      analyser.connect(ctx.destination);
+      trackReady=true;
+      sourceMode="url";
       return true;
     }catch(e){
       lastErr=String(e&&e.message||e);
       return false;
     }
-  }
-
-  function scan(){
-    var list=document.querySelectorAll("audio,video");
-    for(var i=0;i<list.length;i++){
-      trackMedia(list[i]);
-      if(!list[i].paused)hook(list[i]);
-    }
-    for(var j=0;j<tracked.length;j++){
-      if(!tracked[j].paused)hook(tracked[j]);
-    }
-  }
-
-  function startMicFallback(){
-    if(micStarted||!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)return;
-    micStarted=true;
-    navigator.mediaDevices.getUserMedia({
-      audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:true},
-      video:false
-    }).then(function(stream){
-      if(!ensure())return;
-      if(ctx.state==="suspended")ctx.resume();
-      ctx.createMediaStreamSource(stream).connect(analyser);
-      sourceMode="mic";
-      hookCount++;
-    }).catch(function(e){lastErr=String(e&&e.message||e);micStarted=false;});
   }
 
   function bandEnergy(data,start,end,scale){
@@ -275,34 +247,25 @@
     return Math.min(1,Math.max((sum/n)/scale,peak/220));
   }
 
-  function sampleAnalyser(an,fBuf,tBuf){
-    if(!an||!fBuf)return{bass:0,treble:0,rms:0};
-    an.getByteFrequencyData(fBuf);
-    var len=fBuf.length;
-    var bass=bandEnergy(fBuf,1,Math.max(10,Math.floor(len*0.06)),140);
-    var treble=bandEnergy(fBuf,Math.floor(len*0.18),Math.floor(len*0.75),120);
-    var rms=0,i;
-    if(tBuf){
-      an.getByteTimeDomainData(tBuf);
-      var tSum=0;
-      for(i=0;i<tBuf.length;i++){
-        var d=(tBuf[i]-128)/128;
-        tSum+=d*d;
-      }
-      rms=Math.min(1,Math.sqrt(tSum/tBuf.length)*3.1);
-    }
-    return{bass:bass,treble:treble,rms:rms};
-  }
-
   function readBands(){
     if(ctx&&ctx.state==="suspended")ctx.resume();
-    var bassRaw=0,trebleRaw=0,rmsRaw=0,s;
-    if(analyser&&freqData){
-      s=sampleAnalyser(analyser,freqData,timeData);
-      bassRaw=s.bass;trebleRaw=s.treble;rmsRaw=s.rms;
+    if(!analyser||!freqData)return{bass:smoothedBass,treble:smoothedTreble,level:smoothed};
+    analyser.getByteFrequencyData(freqData);
+    var len=freqData.length;
+    var bassRaw=bandEnergy(freqData,1,Math.max(10,Math.floor(len*0.06)),140);
+    var trebleRaw=bandEnergy(freqData,Math.floor(len*0.18),Math.floor(len*0.75),120);
+    var rms=0,i;
+    if(timeData){
+      analyser.getByteTimeDomainData(timeData);
+      var tSum=0;
+      for(i=0;i<timeData.length;i++){
+        var d=(timeData[i]-128)/128;
+        tSum+=d*d;
+      }
+      rms=Math.min(1,Math.sqrt(tSum/timeData.length)*3.1);
     }
-    bassRaw=Math.min(1,Math.max(bassRaw,rmsRaw*0.7));
-    trebleRaw=Math.min(1,Math.max(trebleRaw,rmsRaw*0.35));
+    bassRaw=Math.min(1,Math.max(bassRaw,rms*0.7));
+    trebleRaw=Math.min(1,Math.max(trebleRaw,rms*0.35));
     smoothedBass+=(bassRaw-smoothedBass)*0.5;
     smoothedTreble+=(trebleRaw-smoothedTreble)*0.55;
     smoothed=Math.max(smoothedBass,smoothedTreble);
@@ -310,60 +273,31 @@
   }
 
   function unlock(){
-    ensure();
+    if(!TRACK_URL){lastErr="no track URL";return;}
+    setupTrack();
     if(ctx&&ctx.state==="suspended")ctx.resume();
-    scan();
-    if(hookCount===0)startMicFallback();
-  }
-
-  try{
-    var proto=HTMLMediaElement&&HTMLMediaElement.prototype;
-    if(proto&&!proto.__gmcPlayPatched){
-      var origPlay=proto.play;
-      proto.play=function(){
-        var el=this;
-        var ret=origPlay.apply(this,arguments);
-        try{
-          trackMedia(el);
-          Promise.resolve(ret).then(function(){hook(el);},function(){hook(el);});
-        }catch(e){}
-        return ret;
-      };
-      proto.__gmcPlayPatched=1;
+    if(trackEl){
+      var p=trackEl.play();
+      if(p&&p.catch)p.catch(function(e){lastErr=String(e&&e.message||e);});
     }
-  }catch(e){}
-
-  ["pointerdown","keydown","touchstart","click"].forEach(function(ev){
-    window.addEventListener(ev,unlock,{passive:true,capture:true});
-  });
-  document.addEventListener("play",function(e){trackMedia(e.target);hook(e.target);},true);
-  document.addEventListener("playing",function(e){hook(e.target);},true);
-  if(typeof MutationObserver!=="undefined"){
-    try{
-      new MutationObserver(function(muts){
-        for(var m=0;m<muts.length;m++){
-          var nodes=muts[m].addedNodes;
-          for(var n=0;n<nodes.length;n++){
-            var node=nodes[n];
-            if(!node)continue;
-            if(isMedia(node))trackMedia(node);
-            if(node.querySelectorAll){
-              var found=node.querySelectorAll("audio,video");
-              for(var fi=0;fi<found.length;fi++)trackMedia(found[fi]);
-            }
-          }
-        }
-      }).observe(document.documentElement,{childList:true,subtree:true});
-    }catch(e){}
   }
-  scan();
-  setInterval(scan,1500);
+
+  if(TRACK_URL){
+    setupTrack();
+    ["pointerdown","keydown","touchstart","click"].forEach(function(ev){
+      window.addEventListener(ev,unlock,{passive:true,capture:true});
+    });
+  }else{
+    lastErr="set an audio track URL in Embed";
+  }
+
   window.__gmcPageAudioDebug=function(){
     var b=readBands();
     return{
-      hooked:hooked.length,tracked:tracked.length,hookCount:hookCount,
-      source:sourceMode,level:b.level,bass:b.bass,treble:b.treble,
-      ctx:ctx&&ctx.state,err:lastErr,media:document.querySelectorAll("audio,video").length
+      source:sourceMode,url:TRACK_URL||"",
+      playing:!!(trackEl&&!trackEl.paused),
+      level:b.level,bass:b.bass,treble:b.treble,
+      ctx:ctx&&ctx.state,err:lastErr
     };
   };
   ${pushLive}
@@ -371,10 +305,11 @@
 <\/script>`;
   }
 
-  function buildIframeEmbed(payload, host, w, h, fullscreen, flowIn, soundPage) {
+  function buildIframeEmbed(payload, host, w, h, fullscreen, flowIn, soundPage, soundUrl) {
     const src = buildPlayerUrl(host, payload, fullscreen, flowIn, soundPage);
-    const soundLabel = soundPage ? ' · page audio' : '';
-    const bridge = soundPage ? `\n${buildPageAudioScript('live')}` : '';
+    const soundLabel = soundPage ? ' · audio track' : '';
+    /* Live player analyses the track URL inside the iframe — no parent mic/bridge. */
+    const bridge = '';
     if (fullscreen) {
       return `<!-- GMC Generator · live 2D · full browser screen${flowIn ? ' · flow-in' : ''}${soundLabel} -->
 <!-- Player loads from ${host} -->
@@ -453,7 +388,7 @@
   }
 
   /** Self-contained canvas — checker + dots + meta animation (no iframe / full app). */
-  function buildLiteAnimationEmbed(state, w, h, fullscreen, flowIn, randomOnLoad, soundPage, mouseFieldOn) {
+  function buildLiteAnimationEmbed(state, w, h, fullscreen, flowIn, randomOnLoad, soundPage, mouseFieldOn, soundUrl) {
     const seed = Number(state.seed) || 1;
     const cols = Math.max(4, Math.round(num(state, 'cols', 35)));
     const rows = Math.max(4, Math.round(num(state, 'rows', Math.round(cols * (h / w)))));
@@ -472,6 +407,7 @@
       randomOnLoad: !!randomOnLoad,
       soundPage: !!soundPage,
       soundAmt: num(state, 'soundAmt', 0.65),
+      soundUrl: String(soundUrl || '').trim(),
       mouseIn: !!mouseFieldOn,
       mouseAmt: num(state, 'mouseAmt', 0.55),
       bgA,
@@ -530,7 +466,7 @@
     const sizeLabel = fullscreen ? 'full browser screen' : `${w}×${h}`;
     const flowLabel = flowIn ? ' · flow-in' : '';
     const randomLabel = randomOnLoad ? ' · randomize' : '';
-    const soundLabel = soundPage ? ' · page audio' : '';
+    const soundLabel = soundPage ? ' · audio track' : '';
     const mouseLabel = mouseFieldOn ? ' · mouse field' : '';
     const wrapStyle = fullscreen
       ? 'position:fixed;inset:0;width:100%;height:100%;margin:0;line-height:0;background:transparent;z-index:0;pointer-events:none;overflow:hidden'
@@ -541,7 +477,7 @@
     const aspectPad = fullscreen
       ? ''
       : `\n  <div style="width:100%;padding-top:${ratio}%;pointer-events:none" aria-hidden="true"></div>`;
-    const pageAudioBoot = soundPage ? `\n${buildPageAudioScript('lite')}` : '';
+    const pageAudioBoot = soundPage ? `\n${buildPageAudioScript('lite', soundUrl)}` : '';
 
     return `<!-- GMC · lite field + animation · ${sizeLabel}${flowLabel}${randomLabel}${soundLabel}${mouseLabel} · self-contained -->
 <div class="gmc-lite${fullscreen ? ' gmc-lite--fullscreen' : ''}" style="${wrapStyle}"${fullscreen ? ' aria-hidden="true"' : ''}>${aspectPad}
@@ -987,16 +923,21 @@
     const flow = isFlowIn() || !!document.getElementById('flowIn')?.checked;
     const randomize = mode === 'lite' && isRandomOnLoad();
     const soundPage = isSoundPage();
+    const soundUrl = soundPage ? readSoundUrl() : '';
     const mouseFieldOn = mode === 'lite' && isMouseField();
     const { w, h } = readDisplaySize();
     const state = captureState();
+    if (soundPage && soundUrl) state.soundUrl = soundUrl;
     const flowNote = flow ? ' · flow-in' : '';
     const randomNote = randomize ? ' · randomize on refresh' : '';
-    const soundNote = soundPage ? ' · page audio' : '';
+    const soundNote = soundPage ? (soundUrl ? ' · audio track' : ' · audio (add track URL)') : '';
     const mouseNote = mouseFieldOn ? ' · mouse field' : '';
 
     if (mode === 'lite') {
-      textArea.value = buildLiteAnimationEmbed(state, w, h, full, flow, randomize, soundPage, mouseFieldOn);
+      if (soundPage && !soundUrl) {
+        setStatus('React to audio track is on — paste a direct audio file URL below.');
+      }
+      textArea.value = buildLiteAnimationEmbed(state, w, h, full, flow, randomize, soundPage, mouseFieldOn, soundUrl);
       setStatus(full
         ? `Lite field + animation · full browser screen${flowNote}${randomNote}${soundNote}${mouseNote} · self-contained (no host URL)`
         : `Lite field + animation · ${w}×${h}${flowNote}${randomNote}${soundNote}${mouseNote} · self-contained (no host URL)`);
@@ -1018,7 +959,7 @@
 
     rememberHost(host);
     const payload = encodeConfig(state);
-    textArea.value = buildIframeEmbed(payload, host, w, h, full, flow, soundPage);
+    textArea.value = buildIframeEmbed(payload, host, w, h, full, flow, soundPage, soundUrl);
     setStatus(full
       ? `Live player · full browser screen${flowNote}${soundNote} · paste into an HTML embed`
       : `Live player · ${w}×${h}${flowNote}${soundNote} · paste into an HTML embed`);
@@ -1059,6 +1000,10 @@
   });
   soundPageInput?.addEventListener('change', () => {
     syncModeUi();
+    generate();
+  });
+  soundUrlInput?.addEventListener('change', () => {
+    readSoundUrl();
     generate();
   });
   mouseFieldInput?.addEventListener('change', () => {

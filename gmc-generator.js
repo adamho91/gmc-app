@@ -190,6 +190,45 @@ const SoundInput = (() => {
     window.addEventListener('message', onPageAudioMessage);
   }
 
+  /** Embed-only: play + analyse a track URL (no mic permission). */
+  async function startUrlTrack(url) {
+    const srcUrl = String(url || '').trim();
+    if (!srcUrl) return false;
+    try {
+      if (analyser && stream) stop();
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 1024;
+      analyser.smoothingTimeConstant = 0.5;
+      freqData = new Uint8Array(analyser.frequencyBinCount);
+      const el = new Audio();
+      el.crossOrigin = 'anonymous';
+      el.preload = 'auto';
+      el.loop = true;
+      el.src = srcUrl;
+      el.setAttribute('playsinline', '');
+      el.style.cssText = 'position:fixed;width:0;height:0;opacity:0;pointer-events:none';
+      document.documentElement.appendChild(el);
+      const source = audioCtx.createMediaElementSource(el);
+      source.connect(analyser);
+      analyser.connect(audioCtx.destination);
+      const unlock = () => {
+        if (audioCtx?.state === 'suspended') audioCtx.resume().catch(() => {});
+        el.play().catch(() => {});
+      };
+      ['pointerdown', 'keydown', 'touchstart', 'click'].forEach((ev) => {
+        window.addEventListener(ev, unlock, { passive: true, capture: true });
+      });
+      unlock();
+      setStatus('Track ready — click to play');
+      return true;
+    } catch (err) {
+      console.warn('URL track failed', err);
+      setStatus('Track URL failed (CORS?)');
+      return false;
+    }
+  }
+
   async function start() {
     if (analyser) {
       if (audioCtx?.state === 'suspended') await audioCtx.resume();
@@ -300,7 +339,7 @@ const SoundInput = (() => {
     return pageBridge;
   }
 
-  return { start, stop, level, bands, isLive, enablePageBridge, isPageBridge, setStatus };
+  return { start, stop, level, bands, isLive, enablePageBridge, startUrlTrack, isPageBridge, setStatus };
 })();
 
 function syncFlowInFlag() {
@@ -1835,7 +1874,10 @@ function bootGenerator() {
     embedUrlFlowIn = false;
     embedPageSound = false;
   }
-  if (embedPageSound) SoundInput.enablePageBridge();
+  if (embedPageSound) {
+    const trackUrl = String(embedState?.soundUrl || '').trim();
+    if (trackUrl) SoundInput.startUrlTrack(trackUrl);
+  }
   syncFlowInFlag();
   if (embedFlowIn) animTime = 0;
   if (embedState) {
