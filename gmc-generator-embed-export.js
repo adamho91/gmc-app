@@ -65,8 +65,22 @@
     return !!soundPageInput?.checked;
   }
 
+  /** Prefer raw media URLs; GitHub blob pages are HTML and cannot be analysed. */
+  function normalizeSoundUrl(url) {
+    const raw = String(url || '').trim();
+    if (!raw) return '';
+    try {
+      const u = new URL(raw, location.href);
+      const m = u.pathname.match(/^\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.+)$/);
+      if (/(^|\.)github\.com$/i.test(u.hostname) && m) {
+        return `https://raw.githubusercontent.com/${m[1]}/${m[2]}/${m[3]}/${m[4]}`;
+      }
+    } catch (_) {}
+    return raw;
+  }
+
   function readSoundUrl() {
-    const url = String(soundUrlInput?.value || '').trim();
+    const url = normalizeSoundUrl(String(soundUrlInput?.value || '').trim());
     if (soundUrlInput) soundUrlInput.value = url;
     try {
       if (url) localStorage.setItem(SOUND_URL_KEY, url);
@@ -189,7 +203,7 @@
    * Otherwise the embed plays the track itself.
    */
   function buildPageAudioScript(mode, soundUrl) {
-    const urlJson = JSON.stringify(String(soundUrl || '').trim());
+    const urlJson = JSON.stringify(normalizeSoundUrl(String(soundUrl || '').trim()));
     const pushLive = mode === 'live'
       ? `function push(){var b=readBands();var frames=document.querySelectorAll(".gmc-2d-embed iframe");for(var i=0;i<frames.length;i++){try{frames[i].contentWindow.postMessage({type:"gmc-2d-audio",level:b.level,bass:b.bass,treble:b.treble},"*");}catch(e){}}requestAnimationFrame(push);}requestAnimationFrame(push);`
       : `window.__gmcPageAudioLevel=function(){return readBands().level;};window.__gmcPageAudioBands=function(){return readBands();};`;
@@ -198,8 +212,9 @@
   if(window.__gmcPageAudioBooted)return;
   window.__gmcPageAudioBooted=1;
   var TRACK_URL=${urlJson};
-  var ctx=null,analyser=null,outGain=null,freqData=null,timeData=null,trackEl=null,pageEl=null,trackReady=false,audible=true;
+  var ctx=null,analyser=null,outGain=null,freqData=null,timeData=null,trackEl=null,pageEl=null,trackReady=false,audible=false;
   var smoothed=0,smoothedBass=0,smoothedTreble=0,lastErr="",sourceMode="none";
+  var mediaRegistry=[];
 
   function ensure(){
     if(ctx)return!!analyser;
@@ -212,11 +227,54 @@
     freqData=new Uint8Array(analyser.frequencyBinCount);
     timeData=new Uint8Array(analyser.fftSize);
     outGain=ctx.createGain();
-    outGain.gain.value=1;
+    outGain.gain.value=0;
     analyser.connect(outGain);
     outGain.connect(ctx.destination);
     return true;
   }
+
+  function normalizeTrackUrl(u){
+    u=String(u||"").trim();
+    if(!u)return"";
+    try{
+      var x=new URL(u,location.href);
+      var m=x.pathname.match(/^\\/([^\\/]+)\\/([^\\/]+)\\/blob\\/([^\\/]+)\\/(.+)$/);
+      if(/(^|\\.)github\\.com$/i.test(x.hostname)&&m){
+        return "https://raw.githubusercontent.com/"+m[1]+"/"+m[2]+"/"+m[3]+"/"+m[4];
+      }
+    }catch(e){}
+    return u;
+  }
+  TRACK_URL=normalizeTrackUrl(TRACK_URL);
+
+  function rememberMedia(el){
+    if(!el||el.__gmcEmbedTrack)return;
+    if(mediaRegistry.indexOf(el)<0)mediaRegistry.push(el);
+  }
+
+  (function patchMediaDiscovery(){
+    if(window.__gmcAudioCtorPatched)return;
+    window.__gmcAudioCtorPatched=1;
+    var Orig=window.Audio;
+    if(typeof Orig==="function"){
+      function WrappedAudio(src){
+        var a=(src===undefined)?new Orig():new Orig(src);
+        rememberMedia(a);
+        return a;
+      }
+      WrappedAudio.prototype=Orig.prototype;
+      window.Audio=WrappedAudio;
+    }
+    try{
+      var create=Document.prototype.createElement;
+      Document.prototype.createElement=function(tagName,options){
+        var el=create.call(this,tagName,options);
+        var tag=String(tagName||"").toLowerCase();
+        if(tag==="audio"||tag==="video")rememberMedia(el);
+        return el;
+      };
+    }catch(e){}
+  })();
 
   function normUrl(u){
     try{
@@ -227,6 +285,7 @@
 
   function urlsMatch(a,b){
     if(!a||!b)return false;
+    a=normalizeTrackUrl(a);b=normalizeTrackUrl(b);
     var A=normUrl(a),B=normUrl(b);
     if(A===B)return true;
     if(A.indexOf(B)>=0||B.indexOf(A)>=0)return true;
@@ -244,10 +303,16 @@
 
   function findPageTwin(){
     if(!TRACK_URL)return null;
+    var seen=[],i,el;
     var list=document.querySelectorAll("audio,video");
-    for(var i=0;i<list.length;i++){
-      var el=list[i];
-      if(el===trackEl)continue;
+    for(i=0;i<list.length;i++)seen.push(list[i]);
+    for(i=0;i<mediaRegistry.length;i++){
+      el=mediaRegistry[i];
+      if(seen.indexOf(el)<0)seen.push(el);
+    }
+    for(i=0;i<seen.length;i++){
+      el=seen[i];
+      if(!el||el===trackEl||el.__gmcEmbedTrack)continue;
       if(urlsMatch(mediaSrc(el),TRACK_URL))return el;
     }
     return null;
@@ -273,8 +338,20 @@
     }catch(e){lastErr=String(e&&e.message||e);return false;}
   }
 
+  function adoptTwin(twin){
+    if(!twin||!trackEl)return false;
+    if(pageEl===twin&&(sourceMode==="url-sync"||sourceMode==="page-capture"))return true;
+    pageEl=twin;
+    setAudible(false);
+    if(hookCapture(twin))return true;
+    sourceMode="url-sync";
+    syncTwinToPage(twin);
+    return true;
+  }
+
   function syncTwinToPage(master){
-    if(!trackEl||!master)return;
+    if(!trackEl||!master||master.__gmcTwinSynced)return;
+    master.__gmcTwinSynced=1;
     var sync=function(){
       try{
         if(Math.abs((trackEl.currentTime||0)-(master.currentTime||0))>0.35){
@@ -299,6 +376,21 @@
     }
   }
 
+  function resolvePageOrAudible(){
+    if(!trackReady||sourceMode==="page-capture")return;
+    var twin=findPageTwin();
+    if(twin){
+      adoptTwin(twin);
+      return;
+    }
+    if(sourceMode==="url-pending"||sourceMode==="url-sync"){
+      if(!pageEl){
+        setAudible(true);
+        sourceMode="url";
+      }
+    }
+  }
+
   function setupTrack(){
     if(!TRACK_URL||trackReady)return trackReady;
     if(!ensure())return false;
@@ -308,6 +400,7 @@
 
     try{
       trackEl=new Audio();
+      trackEl.__gmcEmbedTrack=1;
       trackEl.crossOrigin="anonymous";
       trackEl.preload="auto";
       trackEl.loop=true;
@@ -324,8 +417,8 @@
         syncTwinToPage(pageEl);
         sourceMode="url-sync";
       }else{
-        setAudible(true);
-        sourceMode="url";
+        setAudible(false);
+        sourceMode="url-pending";
       }
       trackReady=true;
       return true;
@@ -374,6 +467,7 @@
     if(!TRACK_URL){lastErr="no track URL";return;}
     setupTrack();
     if(ctx&&ctx.state==="suspended")ctx.resume();
+    resolvePageOrAudible();
     pageEl=pageEl||findPageTwin();
     if(pageEl&&sourceMode==="page-capture")return;
     if(pageEl&&sourceMode==="url-sync"){
@@ -391,21 +485,22 @@
     ["pointerdown","keydown","touchstart","click"].forEach(function(ev){
       window.addEventListener(ev,unlock,{passive:true,capture:true});
     });
+    function watchTwin(){
+      resolvePageOrAudible();
+    }
     if(typeof MutationObserver!=="undefined"){
       try{
-        new MutationObserver(function(){
-          if(!pageEl){
-            var twin=findPageTwin();
-            if(twin&&sourceMode==="url"&&trackEl){
-              pageEl=twin;
-              setAudible(false);
-              sourceMode="url-sync";
-              syncTwinToPage(twin);
-            }
-          }
-        }).observe(document.documentElement,{childList:true,subtree:true});
+        new MutationObserver(watchTwin).observe(document.documentElement,{childList:true,subtree:true});
       }catch(e){}
     }
+    document.addEventListener("DOMContentLoaded",watchTwin);
+    setTimeout(watchTwin,0);
+    setTimeout(watchTwin,250);
+    setTimeout(watchTwin,1000);
+    setTimeout(function(){
+      if(sourceMode==="url-pending")resolvePageOrAudible();
+    },1800);
+    setInterval(watchTwin,1200);
   }else{
     lastErr="set an audio track URL in Embed";
   }
@@ -416,7 +511,7 @@
       source:sourceMode,url:TRACK_URL||"",audible:audible,
       page:!!pageEl,playing:!!(trackEl&&!trackEl.paused)||!!(pageEl&&!pageEl.paused),
       level:b.level,bass:b.bass,treble:b.treble,
-      ctx:ctx&&ctx.state,err:lastErr
+      ctx:ctx&&ctx.state,err:lastErr,registry:mediaRegistry.length
     };
   };
   ${pushLive}
