@@ -1,6 +1,9 @@
 /** Deterministic MP4 / WebM export for the 2D generator. MP4 uses WebM→H.264 transcode (CloudConvert-style) or direct JPEG encode at 4K. */
 (function () {
   const PIXELS_4K = 3840 * 3840;
+  /** Browser WebCodecs WebM tends to corrupt past ~2K / multi-megapixel long encodes. */
+  const WEBM_BRIDGE_MAX_EDGE = 2048;
+  const WEBM_BRIDGE_MAX_PIXELS = 2048 * 2048;
   const mp4Button = document.getElementById('btn-mp4');
   const webmButton = document.getElementById('btn-webm');
   const durationInput = document.getElementById('video-duration');
@@ -219,10 +222,21 @@
   function videoBitrate(width, height, fps, qualityKey, scale = 1) {
     const q = QUALITY[qualityKey] || QUALITY.standard;
     const pixels = width * height;
+    const longest = Math.max(width, height);
+    const hiRes = pixels >= 2560 * 2560 || longest >= 2560;
     const raw = Math.round(pixels * fps * q.coeff * scale);
-    const floor = pixels >= 3840 * 3840 ? 12_000_000 : q.min;
-    const cap = pixels >= 3840 * 3840 ? 80_000_000 : 50_000_000;
+    const floor = hiRes ? 12_000_000 : q.min;
+    const cap = hiRes ? 80_000_000 : 50_000_000;
     return Math.max(floor, Math.min(cap, raw));
+  }
+
+  function shouldUseWebmBridge(width, height) {
+    const pixels = width * height;
+    const longest = Math.max(width, height);
+    if (longest > WEBM_BRIDGE_MAX_EDGE) return false;
+    if (pixels > WEBM_BRIDGE_MAX_PIXELS) return false;
+    if (pixels >= PIXELS_4K) return false;
+    return true;
   }
 
   async function setupWebmPipeline(width, height, fps, qualityKey) {
@@ -374,12 +388,21 @@
     const framePattern = `frame%0${pad}d.jpg`;
     const frameNames = [];
     const pixels = width * height;
-    const preset = pixels >= 3840 * 3840 ? 'ultrafast' : pixels >= 1920 * 1920 ? 'fast' : 'medium';
-    const jpegQuality = pixels >= 3840 * 3840 ? 0.88 : 0.9;
+    const longest = Math.max(width, height);
+    const preset = longest >= 3000 || pixels >= 2560 * 2560
+      ? 'ultrafast'
+      : pixels >= 1920 * 1920
+        ? 'veryfast'
+        : 'medium';
+    const jpegQuality = longest >= 3000 || pixels >= 2560 * 2560 ? 0.92 : 0.9;
+    const gop = Math.max(12, Math.round(fps * 2));
 
     for (let index = 0; index < totalFrames; index += 1) {
       animTime = (index / totalFrames) * duration;
       draw(currentSeed, drawOpts);
+      if (sourceCanvas.width !== width || sourceCanvas.height !== height) {
+        throw new Error(`Export frame size mismatch (${sourceCanvas.width}×${sourceCanvas.height} ≠ ${width}×${height}).`);
+      }
       encodeCtx.fillStyle = background;
       encodeCtx.fillRect(0, 0, width, height);
       encodeCtx.drawImage(sourceCanvas, 0, 0, width, height);
@@ -419,8 +442,11 @@
       '-c:v', 'libx264',
       '-preset', preset,
       '-crf', crf,
+      '-g', String(gop),
+      '-keyint_min', String(Math.max(1, Math.round(fps))),
       '-pix_fmt', 'yuv420p',
       '-profile:v', 'high',
+      '-level', '5.1',
       '-movflags', '+faststart',
       '-an',
       'output.mp4',
@@ -527,6 +553,9 @@
       if (pipelineError) throw pipelineError;
       animTime = (index / totalFrames) * duration;
       draw(currentSeed, drawOpts);
+      if (sourceCanvas.width !== width || sourceCanvas.height !== height) {
+        throw new Error(`Export frame size mismatch (${sourceCanvas.width}×${sourceCanvas.height} ≠ ${width}×${height}).`);
+      }
       encodeCtx.fillStyle = background;
       encodeCtx.fillRect(0, 0, width, height);
       encodeCtx.drawImage(sourceCanvas, 0, 0, width, height);
@@ -536,6 +565,11 @@
         duration: frameDurationUs,
       });
       await waitForEncoderQueue(encoder);
+      const pipelineErrorAfter = pipeline.getError();
+      if (pipelineErrorAfter) {
+        frame.close();
+        throw pipelineErrorAfter;
+      }
       encoder.encode(frame, { keyFrame: index % fps === 0 });
       frame.close();
 
@@ -654,8 +688,7 @@
 
       if (format === 'mp4') {
         const { fetchFile } = await import('https://esm.sh/@ffmpeg/util@0.12.1');
-        const pixels = width * height;
-        const useWebmTranscode = pixels < PIXELS_4K;
+        const useWebmTranscode = shouldUseWebmBridge(width, height);
 
         if (useWebmTranscode) {
           if (typeof VideoEncoder === 'undefined' || typeof VideoFrame === 'undefined') {
@@ -699,16 +732,21 @@
             try { encoder.close(); } catch (_) { /* ignore */ }
             encoder = null;
           }
+          const minWebmBytes = Math.max(32_768, totalFrames * 256);
+          const webmLooksBad = !webmResult?.blob || webmResult.blob.size < minWebmBytes;
 
           setStatus(mp4PhaseLabel('2/2', 'MP4 · loading transcoder…'), 78);
           const ffmpeg = await loadFfmpeg((msg, pct) => setStatus(mp4PhaseLabel('2/2', msg), pct));
           let downloadBlob;
           try {
+            if (webmLooksBad) {
+              throw new Error('WebM encode produced a tiny/corrupt file');
+            }
             downloadBlob = await transcodeWebmToMp4(ffmpeg, fetchFile, webmResult.blob, quality, (msg, pct) => {
               setStatus(mp4PhaseLabel('2/2', `MP4 · ${msg}`), pct);
             });
           } catch (transcodeError) {
-            console.warn('WebM transcode failed, falling back to direct MP4 encode', transcodeError);
+            console.warn('WebM path failed, falling back to direct MP4 encode', transcodeError);
             setStatus(mp4PhaseLabel('1/2', 'retry · rendering frames for MP4…'), 8);
             downloadBlob = await encodeMp4FromFrames({
               ffmpeg,
@@ -738,7 +776,7 @@
           return;
         }
 
-        setStatus(mp4PhaseLabel('1/2', 'loading MP4 encoder…'), 6);
+        setStatus(mp4PhaseLabel('1/2', `JPEG frames · ${width}×${height} (high-res path)…`), 6);
         const ffmpeg = await loadFfmpeg((msg, pct) => setStatus(mp4PhaseLabel('1/2', msg), pct));
         setStatus(mp4PhaseLabel('1/2', `rendering 0 / ${totalFrames} · ${width}×${height}`), 8);
         const downloadBlob = await encodeMp4FromFrames({
