@@ -184,8 +184,9 @@
   }
 
   /**
-   * Analyse a track URL (no mic). Own <audio> → MediaElementSource on our graph only.
-   * First user click starts playback (autoplay policy) — never asks for microphone.
+   * Analyse a track URL (no mic).
+   * If the page already plays the same URL, tap/sync that player (no second audible stream).
+   * Otherwise the embed plays the track itself.
    */
   function buildPageAudioScript(mode, soundUrl) {
     const urlJson = JSON.stringify(String(soundUrl || '').trim());
@@ -197,7 +198,7 @@
   if(window.__gmcPageAudioBooted)return;
   window.__gmcPageAudioBooted=1;
   var TRACK_URL=${urlJson};
-  var ctx=null,analyser=null,freqData=null,timeData=null,trackEl=null,trackReady=false;
+  var ctx=null,analyser=null,outGain=null,freqData=null,timeData=null,trackEl=null,pageEl=null,trackReady=false,audible=true;
   var smoothed=0,smoothedBass=0,smoothedTreble=0,lastErr="",sourceMode="none";
 
   function ensure(){
@@ -210,12 +211,101 @@
     analyser.smoothingTimeConstant=0.45;
     freqData=new Uint8Array(analyser.frequencyBinCount);
     timeData=new Uint8Array(analyser.fftSize);
+    outGain=ctx.createGain();
+    outGain.gain.value=1;
+    analyser.connect(outGain);
+    outGain.connect(ctx.destination);
     return true;
+  }
+
+  function normUrl(u){
+    try{
+      var x=new URL(u,location.href);
+      return (x.origin+x.pathname).replace(/\\/+$/,"");
+    }catch(e){return String(u||"").split("?")[0].replace(/\\/+$/,"");}
+  }
+
+  function urlsMatch(a,b){
+    if(!a||!b)return false;
+    var A=normUrl(a),B=normUrl(b);
+    if(A===B)return true;
+    if(A.indexOf(B)>=0||B.indexOf(A)>=0)return true;
+    var pa=A.split("/").pop(),pb=B.split("/").pop();
+    return!!(pa&&pb&&pa===pb);
+  }
+
+  function mediaSrc(el){
+    if(!el)return"";
+    var s=el.currentSrc||el.src||"";
+    if(s)return s;
+    var src=el.querySelector&&el.querySelector("source[src]");
+    return src?src.src:"";
+  }
+
+  function findPageTwin(){
+    if(!TRACK_URL)return null;
+    var list=document.querySelectorAll("audio,video");
+    for(var i=0;i<list.length;i++){
+      var el=list[i];
+      if(el===trackEl)continue;
+      if(urlsMatch(mediaSrc(el),TRACK_URL))return el;
+    }
+    return null;
+  }
+
+  function setAudible(on){
+    if(outGain)outGain.gain.value=on?1:0;
+    audible=!!on;
+  }
+
+  function hookCapture(el){
+    if(typeof el.captureStream!=="function")return false;
+    try{
+      var stream=el.captureStream();
+      var tracks=stream&&stream.getAudioTracks?stream.getAudioTracks():[];
+      if(!tracks||!tracks.length)return false;
+      ctx.createMediaStreamSource(stream).connect(analyser);
+      setAudible(false);
+      pageEl=el;
+      sourceMode="page-capture";
+      trackReady=true;
+      return true;
+    }catch(e){lastErr=String(e&&e.message||e);return false;}
+  }
+
+  function syncTwinToPage(master){
+    if(!trackEl||!master)return;
+    var sync=function(){
+      try{
+        if(Math.abs((trackEl.currentTime||0)-(master.currentTime||0))>0.35){
+          trackEl.currentTime=master.currentTime||0;
+        }
+      }catch(e){}
+    };
+    master.addEventListener("play",function(){
+      sync();
+      if(ctx&&ctx.state==="suspended")ctx.resume();
+      trackEl.play().catch(function(){});
+    });
+    master.addEventListener("pause",function(){trackEl.pause();});
+    master.addEventListener("seeked",sync);
+    master.addEventListener("timeupdate",function(){
+      if(master.paused)return;
+      sync();
+    });
+    if(!master.paused){
+      sync();
+      trackEl.play().catch(function(){});
+    }
   }
 
   function setupTrack(){
     if(!TRACK_URL||trackReady)return trackReady;
     if(!ensure())return false;
+
+    pageEl=findPageTwin();
+    if(pageEl&&hookCapture(pageEl))return true;
+
     try{
       trackEl=new Audio();
       trackEl.crossOrigin="anonymous";
@@ -227,9 +317,17 @@
       document.documentElement.appendChild(trackEl);
       var src=ctx.createMediaElementSource(trackEl);
       src.connect(analyser);
-      analyser.connect(ctx.destination);
+
+      pageEl=pageEl||findPageTwin();
+      if(pageEl){
+        setAudible(false);
+        syncTwinToPage(pageEl);
+        sourceMode="url-sync";
+      }else{
+        setAudible(true);
+        sourceMode="url";
+      }
       trackReady=true;
-      sourceMode="url";
       return true;
     }catch(e){
       lastErr=String(e&&e.message||e);
@@ -276,7 +374,13 @@
     if(!TRACK_URL){lastErr="no track URL";return;}
     setupTrack();
     if(ctx&&ctx.state==="suspended")ctx.resume();
-    if(trackEl){
+    pageEl=pageEl||findPageTwin();
+    if(pageEl&&sourceMode==="page-capture")return;
+    if(pageEl&&sourceMode==="url-sync"){
+      if(!pageEl.paused&&trackEl)trackEl.play().catch(function(){});
+      return;
+    }
+    if(trackEl&&audible){
       var p=trackEl.play();
       if(p&&p.catch)p.catch(function(e){lastErr=String(e&&e.message||e);});
     }
@@ -287,6 +391,21 @@
     ["pointerdown","keydown","touchstart","click"].forEach(function(ev){
       window.addEventListener(ev,unlock,{passive:true,capture:true});
     });
+    if(typeof MutationObserver!=="undefined"){
+      try{
+        new MutationObserver(function(){
+          if(!pageEl){
+            var twin=findPageTwin();
+            if(twin&&sourceMode==="url"&&trackEl){
+              pageEl=twin;
+              setAudible(false);
+              sourceMode="url-sync";
+              syncTwinToPage(twin);
+            }
+          }
+        }).observe(document.documentElement,{childList:true,subtree:true});
+      }catch(e){}
+    }
   }else{
     lastErr="set an audio track URL in Embed";
   }
@@ -294,8 +413,8 @@
   window.__gmcPageAudioDebug=function(){
     var b=readBands();
     return{
-      source:sourceMode,url:TRACK_URL||"",
-      playing:!!(trackEl&&!trackEl.paused),
+      source:sourceMode,url:TRACK_URL||"",audible:audible,
+      page:!!pageEl,playing:!!(trackEl&&!trackEl.paused)||!!(pageEl&&!pageEl.paused),
       level:b.level,bass:b.bass,treble:b.treble,
       ctx:ctx&&ctx.state,err:lastErr
     };
