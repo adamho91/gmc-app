@@ -151,7 +151,7 @@
     return `${base}/gmc-generator.html?embed=1${fill}${flow}${sound}&c=${encodeURIComponent(payload)}`;
   }
 
-  /** Tap host-page &lt;audio&gt;/&lt;video&gt; for levels. mode: "lite" exposes reader; "live" postMessages iframes. */
+  /** Tap host-page media for levels. mode: "lite" exposes reader; "live" postMessages iframes. */
   function buildPageAudioScript(mode) {
     const pushLive = mode === 'live'
       ? `function push(){var level=readLevel();var frames=document.querySelectorAll(".gmc-2d-embed iframe");for(var i=0;i<frames.length;i++){try{frames[i].contentWindow.postMessage({type:"gmc-2d-audio",level:level},"*");}catch(e){}}requestAnimationFrame(push);}requestAnimationFrame(push);`
@@ -160,50 +160,104 @@
 (function(){
   if(window.__gmcPageAudioBooted)return;
   window.__gmcPageAudioBooted=1;
-  var ctx=null,analyser=null,data=null,smoothed=0,hooked=[];
+  var ctx=null,analyser=null,freqData=null,timeData=null,smoothed=0,hooked=[],lastErr="",hookCount=0;
   function ensure(){
-    if(ctx)return;
+    if(ctx)return!!analyser;
     var AC=window.AudioContext||window.webkitAudioContext;
-    if(!AC)return;
+    if(!AC){lastErr="no AudioContext";return false;}
     ctx=new AC();
     analyser=ctx.createAnalyser();
-    analyser.fftSize=512;
-    analyser.smoothingTimeConstant=0.55;
-    data=new Uint8Array(analyser.frequencyBinCount);
-    analyser.connect(ctx.destination);
+    analyser.fftSize=1024;
+    analyser.smoothingTimeConstant=0.5;
+    freqData=new Uint8Array(analyser.frequencyBinCount);
+    timeData=new Uint8Array(analyser.fftSize);
+    var sink=ctx.createGain();
+    sink.gain.value=0;
+    analyser.connect(sink);
+    sink.connect(ctx.destination);
+    return true;
+  }
+  function isMedia(el){
+    return!!(el&&(el.tagName==="AUDIO"||el.tagName==="VIDEO"||el instanceof HTMLMediaElement));
   }
   function hook(el){
-    if(!el||(el.tagName!=="AUDIO"&&el.tagName!=="VIDEO"))return;
-    if(hooked.indexOf(el)>=0)return;
+    if(!isMedia(el))return false;
+    if(hooked.indexOf(el)>=0)return true;
+    if(!ensure()||!ctx||!analyser)return false;
     try{
-      ensure();
-      if(!ctx||!analyser)return;
+      if(typeof el.captureStream==="function"){
+        var stream=el.captureStream();
+        if(stream&&stream.getAudioTracks&&stream.getAudioTracks().length){
+          ctx.createMediaStreamSource(stream).connect(analyser);
+          hooked.push(el);hookCount++;return true;
+        }
+      }
+    }catch(e1){lastErr=String(e1&&e1.message||e1);}
+    try{
       var src=ctx.createMediaElementSource(el);
       src.connect(analyser);
-      hooked.push(el);
-    }catch(e){}
+      src.connect(ctx.destination);
+      hooked.push(el);hookCount++;return true;
+    }catch(e2){lastErr=String(e2&&e2.message||e2);return false;}
   }
   function scan(){
     var list=document.querySelectorAll("audio,video");
     for(var i=0;i<list.length;i++)hook(list[i]);
   }
   function readLevel(){
-    if(!analyser||!data)return smoothed;
+    if(!analyser||!freqData)return smoothed;
     if(ctx&&ctx.state==="suspended")ctx.resume();
-    analyser.getByteFrequencyData(data);
-    var n=Math.min(40,data.length),sum=0,i;
-    for(i=0;i<n;i++)sum+=data[i]*(1.15-i/n*0.4);
-    var raw=Math.min(1,(sum/n)/210);
-    smoothed+=(raw-smoothed)*0.38;
+    analyser.getByteFrequencyData(freqData);
+    var n=Math.min(64,freqData.length),sum=0,i,peak=0;
+    for(i=0;i<n;i++){
+      var v=freqData[i]*(1.2-i/n*0.45);
+      sum+=v;if(v>peak)peak=v;
+    }
+    var freq=Math.min(1,Math.max(sum/n/190,peak/255));
+    var rms=0;
+    if(timeData){
+      analyser.getByteTimeDomainData(timeData);
+      var tSum=0;
+      for(i=0;i<timeData.length;i++){
+        var d=(timeData[i]-128)/128;
+        tSum+=d*d;
+      }
+      rms=Math.min(1,Math.sqrt(tSum/timeData.length)*2.4);
+    }
+    var raw=Math.min(1,Math.max(freq,rms));
+    smoothed+=(raw-smoothed)*0.42;
     return smoothed;
   }
-  function unlock(){ensure();if(ctx&&ctx.state==="suspended")ctx.resume();scan();}
+  function unlock(){
+    ensure();
+    if(ctx&&ctx.state==="suspended")ctx.resume();
+    scan();
+  }
+  try{
+    var proto=HTMLMediaElement&&HTMLMediaElement.prototype;
+    if(proto&&!proto.__gmcPlayPatched){
+      var origPlay=proto.play;
+      proto.play=function(){
+        try{hook(this);unlock();}catch(e){}
+        return origPlay.apply(this,arguments);
+      };
+      proto.__gmcPlayPatched=1;
+    }
+  }catch(e){}
   ["pointerdown","keydown","touchstart","click"].forEach(function(ev){
     window.addEventListener(ev,unlock,{passive:true});
   });
   document.addEventListener("play",function(e){hook(e.target);unlock();},true);
+  if(typeof MutationObserver!=="undefined"){
+    try{
+      new MutationObserver(function(){scan();}).observe(document.documentElement,{childList:true,subtree:true});
+    }catch(e){}
+  }
   scan();
-  setInterval(scan,2000);
+  setInterval(scan,1500);
+  window.__gmcPageAudioDebug=function(){
+    return{hooked:hooked.length,hookCount:hookCount,level:smoothed,ctx:ctx&&ctx.state,err:lastErr,media:document.querySelectorAll("audio,video").length};
+  };
   ${pushLive}
 })();
 <\/script>`;
