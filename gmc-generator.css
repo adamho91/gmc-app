@@ -71,6 +71,9 @@
     line-height: 1.35;
     color: #777;
   }
+  #canvas-keep-symmetric-row.is-disabled {
+    opacity: 0.45;
+  }
   input[type=range] {
     -webkit-appearance: none;
     width: 100%;

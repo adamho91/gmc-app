@@ -38,7 +38,11 @@
     <label for="canvasFreeScale">Scale canvas independently</label>
     <label class="switch"><input type="checkbox" id="canvasFreeScale"><span class="track"></span></label>
   </div>
-  <p class="canvas-scale-hint">Width/Height become output size only — cols, rows, and cell stay fixed; the pattern scales to fit.</p>
+  <div class="ctrl toggle-row" id="canvas-keep-symmetric-row">
+    <label for="canvasKeepSymmetric">Keep primitives symmetric</label>
+    <label class="switch"><input type="checkbox" id="canvasKeepSymmetric" checked disabled><span class="track"></span></label>
+  </div>
+  <p class="canvas-scale-hint">Free scale: Width/Height set output size; cols/rows/cell stay fixed. Symmetric keeps squares/circles from stretching (letterboxes if aspect differs).</p>
 
   <div class="sec">Grid</div>
   <div class="ctrl">

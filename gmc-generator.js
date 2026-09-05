@@ -431,6 +431,18 @@ function isCanvasFreeScaleOn() {
   return !!document.getElementById('canvasFreeScale')?.checked;
 }
 
+function isCanvasKeepSymmetricOn() {
+  return !!document.getElementById('canvasKeepSymmetric')?.checked;
+}
+
+function syncCanvasScaleUi() {
+  const free = isCanvasFreeScaleOn();
+  const sym = document.getElementById('canvasKeepSymmetric');
+  const row = document.getElementById('canvas-keep-symmetric-row');
+  if (sym) sym.disabled = !free;
+  if (row) row.classList.toggle('is-disabled', !free);
+}
+
 function resolveCanvasMetrics(cols, cellSize, opts) {
   const widthInput = document.getElementById('canvasWidth');
   const heightInput = document.getElementById('canvasHeight');
@@ -444,6 +456,7 @@ function resolveCanvasMetrics(cols, cellSize, opts) {
     (Number.isFinite(exportWidth) && exportWidth > 0 && Number.isFinite(exportHeight) && exportHeight > 0)
     || (Number.isFinite(exportPx) && exportPx > 0);
   const wantFreeScale = isCanvasFreeScaleOn();
+  const keepSymmetric = wantFreeScale && isCanvasKeepSymmetricOn();
   const primitiveLock = !exportMode && !wantFreeScale && document.getElementById('canvasPrimitiveLock')?.checked !== false;
   if (exportMode) {
     if (Number.isFinite(exportWidth) && exportWidth > 0 && Number.isFinite(exportHeight) && exportHeight > 0) {
@@ -455,7 +468,7 @@ function resolveCanvasMetrics(cols, cellSize, opts) {
     }
   }
 
-  /* Free scale: keep cols/rows/cellSize; stretch that design into requested W×H. */
+  /* Free scale: keep cols/rows/cellSize; map that design into requested W×H. */
   if (wantFreeScale) {
     const designCell = Math.max(1, Number(cellSize) || 1);
     const designW = Math.max(1, cols * designCell);
@@ -466,7 +479,7 @@ function resolveCanvasMetrics(cols, cellSize, opts) {
     setCanvasDimensionLabel('v-canvas-height', H);
     return {
       W, H, CS: designCell, ROWS: rowsControl,
-      primitiveLock: false, freeScale: true, designW, designH,
+      primitiveLock: false, freeScale: true, keepSymmetric, designW, designH,
     };
   }
 
@@ -486,7 +499,10 @@ function resolveCanvasMetrics(cols, cellSize, opts) {
   const H = primitiveLock ? rows * cell : requestedH;
   setCanvasDimensionLabel('v-canvas-width', W);
   setCanvasDimensionLabel('v-canvas-height', H);
-  return { W, H, CS: cell, ROWS: rows, primitiveLock, freeScale: false, designW: W, designH: H };
+  return {
+    W, H, CS: cell, ROWS: rows, primitiveLock,
+    freeScale: false, keepSymmetric: false, designW: W, designH: H,
+  };
 }
 
 function normalizeCanvasDimensionInputs() {
@@ -585,13 +601,24 @@ function draw(newSeed, opts) {
   canvas.height = outH;
   let W = outW;
   let H = outH;
+  let scaleX = 1;
+  let scaleY = 1;
+  let offsetX = 0;
+  let offsetY = 0;
   if (metrics.freeScale) {
     W = metrics.designW;
     H = metrics.designH;
-    ctx.setTransform(outW / Math.max(1, W), 0, 0, outH / Math.max(1, H), 0, 0);
-  } else {
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    scaleX = outW / Math.max(1, W);
+    scaleY = outH / Math.max(1, H);
+    if (metrics.keepSymmetric) {
+      const s = Math.min(scaleX, scaleY);
+      scaleX = s;
+      scaleY = s;
+      offsetX = (outW - W * s) / 2;
+      offsetY = (outH - H * s) / 2;
+    }
   }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
 
   const clamp01 = (v) => Math.max(0, Math.min(1, v));
   let effWarpStr = warpStr;
@@ -717,7 +744,14 @@ function draw(newSeed, opts) {
   // ── 1. Draw checker BG ────────────────────────────────────────────────────
   ctx.globalCompositeOperation = 'source-over';
   ctx.globalAlpha = 1;
-  // First flood-fill the whole canvas with bgA so gaps between scaled cells are filled
+  /* Output-space clear first so letterbox bars (symmetric free-scale) get bgA. */
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = bgA;
+  ctx.fillRect(0, 0, outW, outH);
+  if (metrics.freeScale) {
+    ctx.setTransform(scaleX, 0, 0, scaleY, offsetX, offsetY);
+  }
+  // Design-space fill so gaps between scaled cells match bgA
   ctx.fillStyle = bgA;
   ctx.fillRect(0, 0, W, H);
   svgEls.push(`<rect x="0" y="0" width="${W}" height="${H}" fill="${bgA}"/>`);
@@ -1176,7 +1210,20 @@ function draw(newSeed, opts) {
   }
 
   canvas._svgData = metrics.freeScale
-    ? { els: svgEls, W: outW, H: outH, viewW: W, viewH: H }
+    ? {
+        els: svgEls,
+        W: outW,
+        H: outH,
+        viewW: W,
+        viewH: H,
+        freeScale: true,
+        keepSymmetric: !!metrics.keepSymmetric,
+        scaleX,
+        scaleY,
+        offsetX,
+        offsetY,
+        letterbox: bgA,
+      }
     : { els: svgEls, W, H };
 }
 
@@ -1264,6 +1311,7 @@ document.getElementById('canvasPrimitiveLock').addEventListener('change', () => 
     if (free) free.checked = false;
     setCanvasDimensionsFromGrid();
   }
+  syncCanvasScaleUi();
   normalizeCanvasDimensionInputs();
   saveCurrentState();
   draw();
@@ -1273,7 +1321,12 @@ document.getElementById('canvasFreeScale')?.addEventListener('change', () => {
     const lock = document.getElementById('canvasPrimitiveLock');
     if (lock) lock.checked = false;
   }
+  syncCanvasScaleUi();
   normalizeCanvasDimensionInputs();
+  saveCurrentState();
+  draw();
+});
+document.getElementById('canvasKeepSymmetric')?.addEventListener('change', () => {
   saveCurrentState();
   draw();
 });
@@ -1291,6 +1344,23 @@ document.getElementById('btn-save').addEventListener('click', () => {
 function buildSvgString() {
   const d = canvas._svgData;
   if (!d) return null;
+  if (d.freeScale) {
+    const sx = Number(d.scaleX) || 1;
+    const sy = Number(d.scaleY) || 1;
+    const ox = Number(d.offsetX) || 0;
+    const oy = Number(d.offsetY) || 0;
+    const fill = d.letterbox || '#FFFFFF';
+    const scaleAttr = Math.abs(sx - sy) < 1e-9
+      ? String(sx)
+      : `${sx} ${sy}`;
+    return (
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${d.W}" height="${d.H}" viewBox="0 0 ${d.W} ${d.H}">\n` +
+      `<rect x="0" y="0" width="${d.W}" height="${d.H}" fill="${fill}"/>\n` +
+      `<g transform="translate(${ox},${oy}) scale(${scaleAttr})">\n` +
+      `${d.els.join('\n')}\n` +
+      `</g>\n</svg>`
+    );
+  }
   const viewW = d.viewW || d.W;
   const viewH = d.viewH || d.H;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${d.W}" height="${d.H}" viewBox="0 0 ${viewW} ${viewH}">\n${d.els.join('\n')}\n</svg>`;
@@ -1328,7 +1398,7 @@ document.getElementById('btn-svg-copy').addEventListener('click', () => {
 const ALL_SLIDER_IDS = Object.keys(SLIDERS);
 const META_STROKE_IDS = new Set(['ends', 'deep', 'mix_deep', 'family_random', 'all_swatches', 'black', 'legacy_mid']);
 const ALL_SELECT_IDS = ['checkerStyle','palette','patType','patColor','patBlend','warpType','metaMode','metaColor','metaStroke'];
-const ALL_CHECKBOX_IDS = ['canvasPrimitiveLock', 'canvasFreeScale', 'checkerGrid', 'dotOsc', 'warpOsc', 'flowIn', 'soundIn', 'mouseIn'];
+const ALL_CHECKBOX_IDS = ['canvasPrimitiveLock', 'canvasFreeScale', 'canvasKeepSymmetric', 'checkerGrid', 'dotOsc', 'warpOsc', 'flowIn', 'soundIn', 'mouseIn'];
 const LS_STATE_KEY   = 'gmc_state';
 const LS_PRESETS_KEY = 'gmc_presets';
 const IDB_NAME = 'gmc-generator';
@@ -1502,9 +1572,10 @@ function captureState() {
 }
 
 function applyState(state) {
-  /* Live embeds: scale design into viewport size — keep cols/rows/cell stable. */
+  /* Live embeds: scale design into viewport size — keep cols/rows/cell stable.
+     Stretch to fill (no letterbox) so fullscreen embeds cover the frame. */
   if (document.documentElement.classList.contains('gmc-2d-embed') && state) {
-    state = { ...state, canvasPrimitiveLock: false, canvasFreeScale: true };
+    state = { ...state, canvasPrimitiveLock: false, canvasFreeScale: true, canvasKeepSymmetric: false };
   }
   ALL_SLIDER_IDS.forEach(id => {
     const el = document.getElementById(id);
@@ -1550,6 +1621,7 @@ function applyState(state) {
   }
   if (state.rows === undefined && state.cols !== undefined) syncRowsControl(state.cols);
   syncCheckerGridUi();
+  syncCanvasScaleUi();
   if (state.seed !== undefined) currentSeed = state.seed;
   restartFlowIn();
   draw(currentSeed);
@@ -1775,6 +1847,7 @@ ALL_CHECKBOX_IDS.forEach(id => {
   el.addEventListener('change', saveCurrentState);
 });
 syncCheckerGridUi();
+syncCanvasScaleUi();
 
 // ── Animation loop — drives subtle node-chain motion ───────────────────────────
 // Only redraws when chains are visible and at least one speed slider is > 0,
