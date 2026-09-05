@@ -1551,6 +1551,7 @@ function bindSphereTiltCanvasDrag(getP, canvas) {
   }
 
   canvas.addEventListener("pointerdown", (ev) => {
+    ev.preventDefault();
     if (ev.button !== 0) return;
     if (!pointInSphere(ev.clientX, ev.clientY)) return;
     capturedId = ev.pointerId;
@@ -1816,6 +1817,10 @@ function sketch(p) {
       pc.style.position = "relative";
       pc.style.zIndex = "1";
       pc.style.background = "transparent";
+      pc.setAttribute("draggable", "false");
+      pc.style.userSelect = "none";
+      pc.style.webkitUserSelect = "none";
+      pc.style.webkitUserDrag = "none";
     }
     bindSphereTiltCanvasDrag(() => pInst, p.canvas);
   };

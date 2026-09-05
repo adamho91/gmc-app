@@ -9,6 +9,11 @@
     (function () {
       if (!/[?&]embed(?:=1|&|$)/.test(location.search)) return;
       document.documentElement.classList.add("gmc-embed", "gmc-embed-loading");
+      function blockSelect(e) { e.preventDefault(); }
+      document.addEventListener("selectstart", blockSelect);
+      document.addEventListener("dragstart", blockSelect);
+      document.addEventListener("pointerdown", blockSelect, { capture: true });
+      document.addEventListener("mousedown", blockSelect, { capture: true });
     })();
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -914,6 +919,20 @@
       width: 100%;
       height: 100%;
       min-height: 100%;
+      -webkit-user-select: none !important;
+      user-select: none !important;
+      -webkit-user-drag: none !important;
+      -webkit-touch-callout: none !important;
+    }
+    html.gmc-embed *,
+    html.gmc-embed canvas {
+      -webkit-user-select: none !important;
+      user-select: none !important;
+      -webkit-user-drag: none !important;
+      -webkit-touch-callout: none !important;
+    }
+    html.gmc-embed ::selection {
+      background: transparent !important;
     }
     html.gmc-embed #app-shell {
       width: 100%;
