@@ -427,6 +427,10 @@ function setCanvasDimensionsFromGrid() {
   setCanvasDimensionLabel('v-canvas-height', height);
 }
 
+function isCanvasFreeScaleOn() {
+  return !!document.getElementById('canvasFreeScale')?.checked;
+}
+
 function resolveCanvasMetrics(cols, cellSize, opts) {
   const widthInput = document.getElementById('canvasWidth');
   const heightInput = document.getElementById('canvasHeight');
@@ -439,7 +443,8 @@ function resolveCanvasMetrics(cols, cellSize, opts) {
   const exportMode =
     (Number.isFinite(exportWidth) && exportWidth > 0 && Number.isFinite(exportHeight) && exportHeight > 0)
     || (Number.isFinite(exportPx) && exportPx > 0);
-  const primitiveLock = !exportMode && document.getElementById('canvasPrimitiveLock')?.checked !== false;
+  const wantFreeScale = isCanvasFreeScaleOn();
+  const primitiveLock = !exportMode && !wantFreeScale && document.getElementById('canvasPrimitiveLock')?.checked !== false;
   if (exportMode) {
     if (Number.isFinite(exportWidth) && exportWidth > 0 && Number.isFinite(exportHeight) && exportHeight > 0) {
       requestedW = Math.max(1, Math.round(exportWidth));
@@ -448,6 +453,21 @@ function resolveCanvasMetrics(cols, cellSize, opts) {
       requestedW = Math.max(1, Math.round(exportPx));
       requestedH = Math.max(1, Math.round(exportPx));
     }
+  }
+
+  /* Free scale: keep cols/rows/cellSize; stretch that design into requested W×H. */
+  if (wantFreeScale) {
+    const designCell = Math.max(1, Number(cellSize) || 1);
+    const designW = Math.max(1, cols * designCell);
+    const designH = Math.max(1, rowsControl * designCell);
+    const W = requestedW;
+    const H = requestedH;
+    setCanvasDimensionLabel('v-canvas-width', W);
+    setCanvasDimensionLabel('v-canvas-height', H);
+    return {
+      W, H, CS: designCell, ROWS: rowsControl,
+      primitiveLock: false, freeScale: true, designW, designH,
+    };
   }
 
   const rawCell = requestedW / cols;
@@ -466,7 +486,7 @@ function resolveCanvasMetrics(cols, cellSize, opts) {
   const H = primitiveLock ? rows * cell : requestedH;
   setCanvasDimensionLabel('v-canvas-width', W);
   setCanvasDimensionLabel('v-canvas-height', H);
-  return { W, H, CS: cell, ROWS: rows, primitiveLock };
+  return { W, H, CS: cell, ROWS: rows, primitiveLock, freeScale: false, designW: W, designH: H };
 }
 
 function normalizeCanvasDimensionInputs() {
@@ -478,6 +498,9 @@ function normalizeCanvasDimensionInputs() {
   if (metrics.primitiveLock) {
     if (widthInput) widthInput.value = metrics.W;
     if (heightInput) heightInput.value = metrics.H;
+  } else if (widthInput && heightInput) {
+    widthInput.value = metrics.W;
+    heightInput.value = metrics.H;
   }
 }
 
@@ -556,10 +579,19 @@ function draw(newSeed, opts) {
   const metaPulse    = parseFloat(document.getElementById('metaPulse').value);
   const metaFlow     = parseFloat(document.getElementById('metaFlow').value);
 
-  const W = metrics.W;
-  const H = metrics.H;
-  canvas.width = W;
-  canvas.height = H;
+  const outW = metrics.W;
+  const outH = metrics.H;
+  canvas.width = outW;
+  canvas.height = outH;
+  let W = outW;
+  let H = outH;
+  if (metrics.freeScale) {
+    W = metrics.designW;
+    H = metrics.designH;
+    ctx.setTransform(outW / Math.max(1, W), 0, 0, outH / Math.max(1, H), 0, 0);
+  } else {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+  }
 
   const clamp01 = (v) => Math.max(0, Math.min(1, v));
   let effWarpStr = warpStr;
@@ -1143,7 +1175,9 @@ function draw(newSeed, opts) {
     );
   }
 
-  canvas._svgData = { els: svgEls, W, H };
+  canvas._svgData = metrics.freeScale
+    ? { els: svgEls, W: outW, H: outH, viewW: W, viewH: H }
+    : { els: svgEls, W, H };
 }
 
 // ── Wiring ────────────────────────────────────────────────────────────────────
@@ -1172,7 +1206,11 @@ for (const [id, valId] of Object.entries(SLIDERS)) {
   if (!el || !vl) continue;
   el.addEventListener('input', () => {
     vl.textContent = parseFloat(el.value).toFixed(el.step && parseFloat(el.step) < 1 ? 2 : 0);
-    if (id === 'cellSize' || id === 'cols' || id === 'rows') setCanvasDimensionsFromGrid();
+    if (id === 'cellSize' || id === 'cols' || id === 'rows') {
+      if (document.getElementById('canvasPrimitiveLock')?.checked && !isCanvasFreeScaleOn()) {
+        setCanvasDimensionsFromGrid();
+      }
+    }
     draw();
   });
 }
@@ -1221,6 +1259,20 @@ document.getElementById('checkerGrid')?.addEventListener('change', () => {
   draw();
 });
 document.getElementById('canvasPrimitiveLock').addEventListener('change', () => {
+  if (document.getElementById('canvasPrimitiveLock').checked) {
+    const free = document.getElementById('canvasFreeScale');
+    if (free) free.checked = false;
+    setCanvasDimensionsFromGrid();
+  }
+  normalizeCanvasDimensionInputs();
+  saveCurrentState();
+  draw();
+});
+document.getElementById('canvasFreeScale')?.addEventListener('change', () => {
+  if (document.getElementById('canvasFreeScale').checked) {
+    const lock = document.getElementById('canvasPrimitiveLock');
+    if (lock) lock.checked = false;
+  }
   normalizeCanvasDimensionInputs();
   saveCurrentState();
   draw();
@@ -1239,7 +1291,9 @@ document.getElementById('btn-save').addEventListener('click', () => {
 function buildSvgString() {
   const d = canvas._svgData;
   if (!d) return null;
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${d.W}" height="${d.H}" viewBox="0 0 ${d.W} ${d.H}">\n${d.els.join('\n')}\n</svg>`;
+  const viewW = d.viewW || d.W;
+  const viewH = d.viewH || d.H;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${d.W}" height="${d.H}" viewBox="0 0 ${viewW} ${viewH}">\n${d.els.join('\n')}\n</svg>`;
 }
 
 document.getElementById('btn-svg').addEventListener('click', () => {
@@ -1274,7 +1328,7 @@ document.getElementById('btn-svg-copy').addEventListener('click', () => {
 const ALL_SLIDER_IDS = Object.keys(SLIDERS);
 const META_STROKE_IDS = new Set(['ends', 'deep', 'mix_deep', 'family_random', 'all_swatches', 'black', 'legacy_mid']);
 const ALL_SELECT_IDS = ['checkerStyle','palette','patType','patColor','patBlend','warpType','metaMode','metaColor','metaStroke'];
-const ALL_CHECKBOX_IDS = ['canvasPrimitiveLock', 'checkerGrid', 'dotOsc', 'warpOsc', 'flowIn', 'soundIn', 'mouseIn'];
+const ALL_CHECKBOX_IDS = ['canvasPrimitiveLock', 'canvasFreeScale', 'checkerGrid', 'dotOsc', 'warpOsc', 'flowIn', 'soundIn', 'mouseIn'];
 const LS_STATE_KEY   = 'gmc_state';
 const LS_PRESETS_KEY = 'gmc_presets';
 const IDB_NAME = 'gmc-generator';
@@ -1448,9 +1502,9 @@ function captureState() {
 }
 
 function applyState(state) {
-  /* Live embeds: use full canvas W×H from the config — don't shrink to the primitive grid clip. */
+  /* Live embeds: scale design into viewport size — keep cols/rows/cell stable. */
   if (document.documentElement.classList.contains('gmc-2d-embed') && state) {
-    state = { ...state, canvasPrimitiveLock: false };
+    state = { ...state, canvasPrimitiveLock: false, canvasFreeScale: true };
   }
   ALL_SLIDER_IDS.forEach(id => {
     const el = document.getElementById(id);

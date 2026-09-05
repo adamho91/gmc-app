@@ -65,6 +65,12 @@
     grid-template-columns: 1fr 1fr;
     gap: 7px;
   }
+  .canvas-scale-hint {
+    margin: -2px 0 10px;
+    font-size: 10px;
+    line-height: 1.35;
+    color: #777;
+  }
   input[type=range] {
     -webkit-appearance: none;
     width: 100%;
