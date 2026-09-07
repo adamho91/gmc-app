@@ -813,6 +813,8 @@
     const flowLabel = flowIn ? ' · flow-in' : '';
     const randomLabel = randomOnLoad ? ' · randomize' : '';
     const soundLabel = soundPage ? (urls.length > 1 ? ' · audio tracks' : ' · audio track') : '';
+    const mouseLabel = mouseFieldOn ? ' · mouse field' : '';
+    const wrapStyle = fullscreen
       ? 'position:fixed;inset:0;width:100%;height:100%;margin:0;line-height:0;background:transparent;z-index:0;pointer-events:none;overflow:hidden'
       : `width:100%;max-width:${w}px;margin:0 auto;position:relative;line-height:0;background:transparent;aspect-ratio:${w} / ${h}`;
     const canvasStyle = fullscreen
