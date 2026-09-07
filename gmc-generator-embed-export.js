@@ -9,8 +9,9 @@
   const flowInInput = document.getElementById('embed-flow-in');
   const randomSeedInput = document.getElementById('embed-random-seed');
   const soundPageInput = document.getElementById('embed-sound-page');
-  const soundUrlInput = document.getElementById('embed-sound-url');
   const soundUrlField = document.getElementById('embed-sound-url-field');
+  const soundUrlList = document.getElementById('embed-sound-url-list');
+  const soundUrlAddBtn = document.getElementById('embed-sound-url-add');
   const mouseFieldInput = document.getElementById('embed-mouse');
   const mouseField = document.getElementById('embed-mouse-field');
   const randomField = document.getElementById('embed-random-field');
@@ -31,7 +32,9 @@
   const RANDOM_KEY = 'gmc-2d-embed-random-seed';
   const SOUND_KEY = 'gmc-2d-embed-sound-page';
   const SOUND_URL_KEY = 'gmc-2d-embed-sound-url';
+  const SOUND_URLS_KEY = 'gmc-2d-embed-sound-urls';
   const MOUSE_KEY = 'gmc-2d-embed-mouse';
+  const MAX_SOUND_URLS = 3;
 
   function setStatus(message) {
     if (status) status.textContent = message || '';
@@ -79,13 +82,109 @@
     return raw;
   }
 
-  function readSoundUrl() {
-    const url = normalizeSoundUrl(String(soundUrlInput?.value || '').trim());
-    if (soundUrlInput) soundUrlInput.value = url;
+  function soundUrlInputs() {
+    return soundUrlList ? [...soundUrlList.querySelectorAll('input.embed-sound-url')] : [];
+  }
+
+  function syncSoundUrlAddUi() {
+    const count = soundUrlInputs().length;
+    if (soundUrlAddBtn) soundUrlAddBtn.hidden = count >= MAX_SOUND_URLS;
+    soundUrlInputs().forEach((input, index) => {
+      const slot = input.closest('.embed-sound-url-slot');
+      if (!slot) return;
+      let remove = slot.querySelector('.embed-sound-url-remove');
+      if (index === 0) {
+        if (remove) remove.remove();
+        return;
+      }
+      if (!remove) {
+        remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'embed-sound-url-remove';
+        remove.textContent = 'Remove';
+        remove.addEventListener('click', () => {
+          slot.remove();
+          syncSoundUrlAddUi();
+          persistSoundUrls(readSoundUrls());
+          generate();
+        });
+        slot.appendChild(remove);
+      }
+    });
+  }
+
+  function addSoundUrlSlot(value = '') {
+    if (!soundUrlList || soundUrlInputs().length >= MAX_SOUND_URLS) return null;
+    const slot = document.createElement('div');
+    slot.className = 'embed-sound-url-slot';
+    const input = document.createElement('input');
+    input.type = 'url';
+    input.className = 'embed-sound-url';
+    input.placeholder = 'https://…/track.wav (raw file URL)';
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+    input.value = value || '';
+    input.addEventListener('change', () => {
+      persistSoundUrls(readSoundUrls());
+      generate();
+    });
+    slot.appendChild(input);
+    soundUrlList.appendChild(slot);
+    syncSoundUrlAddUi();
+    return input;
+  }
+
+  function setSoundUrlSlots(urls) {
+    const list = (Array.isArray(urls) ? urls : [urls])
+      .map((u) => normalizeSoundUrl(u))
+      .filter(Boolean)
+      .slice(0, MAX_SOUND_URLS);
+    if (!soundUrlList) return;
+    soundUrlList.innerHTML = '';
+    if (!list.length) {
+      addSoundUrlSlot('');
+    } else {
+      list.forEach((url) => addSoundUrlSlot(url));
+    }
+    syncSoundUrlAddUi();
+  }
+
+  function persistSoundUrls(urls) {
     try {
-      if (url) localStorage.setItem(SOUND_URL_KEY, url);
+      localStorage.setItem(SOUND_URLS_KEY, JSON.stringify(urls));
+      if (urls[0]) localStorage.setItem(SOUND_URL_KEY, urls[0]);
+      else localStorage.removeItem(SOUND_URL_KEY);
     } catch (_) {}
-    return url;
+  }
+
+  function readSoundUrls() {
+    const urls = [];
+    soundUrlInputs().forEach((input) => {
+      const url = normalizeSoundUrl(input.value);
+      input.value = url;
+      if (url && !urls.includes(url)) urls.push(url);
+    });
+    const clipped = urls.slice(0, MAX_SOUND_URLS);
+    persistSoundUrls(clipped);
+    return clipped;
+  }
+
+  function loadStoredSoundUrls() {
+    try {
+      const raw = localStorage.getItem(SOUND_URLS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          return parsed.map(normalizeSoundUrl).filter(Boolean).slice(0, MAX_SOUND_URLS);
+        }
+      }
+    } catch (_) {}
+    try {
+      const legacy = normalizeSoundUrl(localStorage.getItem(SOUND_URL_KEY) || '');
+      return legacy ? [legacy] : [];
+    } catch (_) {
+      return [];
+    }
   }
 
   function isMouseField() {
@@ -133,6 +232,7 @@
     if (randomField) randomField.hidden = mode !== 'lite';
     if (mouseField) mouseField.hidden = mode !== 'lite';
     if (soundUrlField) soundUrlField.hidden = !isSoundPage();
+    syncSoundUrlAddUi();
     try {
       localStorage.setItem(MODE_KEY, mode);
       localStorage.setItem(FULL_KEY, full ? '1' : '0');
@@ -140,8 +240,7 @@
       localStorage.setItem(RANDOM_KEY, isRandomOnLoad() ? '1' : '0');
       localStorage.setItem(SOUND_KEY, isSoundPage() ? '1' : '0');
       localStorage.setItem(MOUSE_KEY, isMouseField() ? '1' : '0');
-      const url = String(soundUrlInput?.value || '').trim();
-      if (url) localStorage.setItem(SOUND_URL_KEY, url);
+      persistSoundUrls(readSoundUrls());
     } catch (_) {}
   }
 
@@ -167,10 +266,14 @@
       if (soundPageInput) soundPageInput.checked = localStorage.getItem(SOUND_KEY) === '1';
     } catch (_) {}
     try {
-      if (soundUrlInput && !soundUrlInput.value) {
-        soundUrlInput.value = localStorage.getItem(SOUND_URL_KEY) || '';
+      if (!soundUrlInputs().some((el) => el.value.trim())) {
+        setSoundUrlSlots(loadStoredSoundUrls());
+      } else {
+        syncSoundUrlAddUi();
       }
-    } catch (_) {}
+    } catch (_) {
+      setSoundUrlSlots([]);
+    }
     try {
       if (mouseFieldInput) mouseFieldInput.checked = localStorage.getItem(MOUSE_KEY) === '1';
     } catch (_) {}
@@ -198,12 +301,16 @@
   }
 
   /**
-   * Analyse a track URL (no mic).
-   * If the page already plays the same URL, tap/sync that player (no second audible stream).
-   * Otherwise the embed plays the track itself.
+   * Analyse track URL(s) (no mic).
+   * If the page already plays a matching URL, tap/sync that player (no second audible stream).
+   * Otherwise the embed plays the first track itself.
    */
-  function buildPageAudioScript(mode, soundUrl) {
-    const urlJson = JSON.stringify(normalizeSoundUrl(String(soundUrl || '').trim()));
+  function buildPageAudioScript(mode, soundUrls) {
+    const list = (Array.isArray(soundUrls) ? soundUrls : [soundUrls])
+      .map((u) => normalizeSoundUrl(u))
+      .filter(Boolean)
+      .slice(0, MAX_SOUND_URLS);
+    const urlsJson = JSON.stringify(list);
     const pushLive = mode === 'live'
       ? `function push(){var b=readBands();var frames=document.querySelectorAll(".gmc-2d-embed iframe");for(var i=0;i<frames.length;i++){try{frames[i].contentWindow.postMessage({type:"gmc-2d-audio",level:b.level,bass:b.bass,treble:b.treble},"*");}catch(e){}}requestAnimationFrame(push);}requestAnimationFrame(push);`
       : `window.__gmcPageAudioLevel=function(){return readBands().level;};window.__gmcPageAudioBands=function(){return readBands();};`;
@@ -211,7 +318,7 @@
 (function(){
   if(window.__gmcPageAudioBooted)return;
   window.__gmcPageAudioBooted=1;
-  var TRACK_URL=${urlJson};
+  var TRACK_URLS=${urlsJson};
   var ctx=null,analyser=null,outGain=null,freqData=null,timeData=null,trackEl=null,pageEl=null,trackReady=false,audible=false;
   var smoothed=0,smoothedBass=0,smoothedTreble=0,lastErr="",sourceMode="none";
   var mediaRegistry=[];
@@ -245,7 +352,8 @@
     }catch(e){}
     return u;
   }
-  TRACK_URL=normalizeTrackUrl(TRACK_URL);
+  TRACK_URLS=(TRACK_URLS||[]).map(normalizeTrackUrl).filter(Boolean);
+  var TRACK_URL=TRACK_URLS[0]||"";
 
   function rememberMedia(el){
     if(!el||el.__gmcEmbedTrack)return;
@@ -301,9 +409,17 @@
     return src?src.src:"";
   }
 
+  function matchesAnyTrack(src){
+    if(!src)return"";
+    for(var i=0;i<TRACK_URLS.length;i++){
+      if(urlsMatch(src,TRACK_URLS[i]))return TRACK_URLS[i];
+    }
+    return"";
+  }
+
   function findPageTwin(){
-    if(!TRACK_URL)return null;
-    var seen=[],i,el;
+    if(!TRACK_URLS.length)return null;
+    var seen=[],i,el,matches=[];
     var list=document.querySelectorAll("audio,video");
     for(i=0;i<list.length;i++)seen.push(list[i]);
     for(i=0;i<mediaRegistry.length;i++){
@@ -313,9 +429,12 @@
     for(i=0;i<seen.length;i++){
       el=seen[i];
       if(!el||el===trackEl||el.__gmcEmbedTrack)continue;
-      if(urlsMatch(mediaSrc(el),TRACK_URL))return el;
+      if(matchesAnyTrack(mediaSrc(el)))matches.push(el);
     }
-    return null;
+    for(i=0;i<matches.length;i++){
+      if(!matches[i].paused)return matches[i];
+    }
+    return matches[0]||null;
   }
 
   function setAudible(on){
@@ -343,6 +462,10 @@
     if(pageEl===twin&&(sourceMode==="url-sync"||sourceMode==="page-capture"))return true;
     pageEl=twin;
     setAudible(false);
+    var matched=matchesAnyTrack(mediaSrc(twin));
+    if(matched&&!urlsMatch(mediaSrc(trackEl),matched)){
+      try{trackEl.src=matched;}catch(e){}
+    }
     if(hookCapture(twin))return true;
     sourceMode="url-sync";
     syncTwinToPage(twin);
@@ -464,7 +587,7 @@
   }
 
   function unlock(){
-    if(!TRACK_URL){lastErr="no track URL";return;}
+    if(!TRACK_URLS.length){lastErr="no track URL";return;}
     setupTrack();
     if(ctx&&ctx.state==="suspended")ctx.resume();
     resolvePageOrAudible();
@@ -480,7 +603,7 @@
     }
   }
 
-  if(TRACK_URL){
+  if(TRACK_URLS.length){
     setupTrack();
     ["pointerdown","keydown","touchstart","click"].forEach(function(ev){
       window.addEventListener(ev,unlock,{passive:true,capture:true});
@@ -508,7 +631,7 @@
   window.__gmcPageAudioDebug=function(){
     var b=readBands();
     return{
-      source:sourceMode,url:TRACK_URL||"",audible:audible,
+      source:sourceMode,url:TRACK_URL||"",urls:TRACK_URLS.slice(),audible:audible,
       page:!!pageEl,playing:!!(trackEl&&!trackEl.paused)||!!(pageEl&&!pageEl.paused),
       level:b.level,bass:b.bass,treble:b.treble,
       ctx:ctx&&ctx.state,err:lastErr,registry:mediaRegistry.length
@@ -519,11 +642,15 @@
 <\/script>`;
   }
 
-  function buildIframeEmbed(payload, host, w, h, fullscreen, flowIn, soundPage, soundUrl) {
+  function buildIframeEmbed(payload, host, w, h, fullscreen, flowIn, soundPage, soundUrls) {
     const src = buildPlayerUrl(host, payload, fullscreen, flowIn, soundPage);
-    const soundLabel = soundPage ? ' · audio track' : '';
-    /* Live player analyses the track URL inside the iframe — no parent mic/bridge. */
-    const bridge = '';
+    const urls = (Array.isArray(soundUrls) ? soundUrls : [soundUrls])
+      .map((u) => normalizeSoundUrl(u))
+      .filter(Boolean)
+      .slice(0, MAX_SOUND_URLS);
+    const soundLabel = soundPage ? (urls.length > 1 ? ' · audio tracks' : ' · audio track') : '';
+    /* Parent can sync analysis to matching page players; iframe also gets sound=1. */
+    const bridge = soundPage && urls.length ? `\n${buildPageAudioScript('live', urls)}` : '';
     if (fullscreen) {
       return `<!-- GMC Generator · live 2D · full browser screen${flowIn ? ' · flow-in' : ''}${soundLabel} -->
 <!-- Player loads from ${host} -->
@@ -602,13 +729,17 @@
   }
 
   /** Self-contained canvas — checker + dots + meta animation (no iframe / full app). */
-  function buildLiteAnimationEmbed(state, w, h, fullscreen, flowIn, randomOnLoad, soundPage, mouseFieldOn, soundUrl) {
+  function buildLiteAnimationEmbed(state, w, h, fullscreen, flowIn, randomOnLoad, soundPage, mouseFieldOn, soundUrls) {
     const seed = Number(state.seed) || 1;
     const cols = Math.max(4, Math.round(num(state, 'cols', 35)));
     const rows = Math.max(4, Math.round(num(state, 'rows', Math.round(cols * (h / w)))));
     const { bgA, bgB, families, allFamilies } = resolveLitePalette(state);
     const ratio = ((h / w) * 100).toFixed(4);
     const uid = `gmc-lite-${seed.toString(36)}-${Math.abs((w * 1000 + h) | 0).toString(36)}`;
+    const urls = (Array.isArray(soundUrls) ? soundUrls : [soundUrls])
+      .map((u) => normalizeSoundUrl(u))
+      .filter(Boolean)
+      .slice(0, MAX_SOUND_URLS);
 
     const cfg = {
       seed,
@@ -621,7 +752,8 @@
       randomOnLoad: !!randomOnLoad,
       soundPage: !!soundPage,
       soundAmt: num(state, 'soundAmt', 0.65),
-      soundUrl: String(soundUrl || '').trim(),
+      soundUrl: urls[0] || '',
+      soundUrls: urls,
       mouseIn: !!mouseFieldOn,
       mouseAmt: num(state, 'mouseAmt', 0.55),
       bgA,
@@ -680,9 +812,7 @@
     const sizeLabel = fullscreen ? 'full browser screen' : `${w}×${h}`;
     const flowLabel = flowIn ? ' · flow-in' : '';
     const randomLabel = randomOnLoad ? ' · randomize' : '';
-    const soundLabel = soundPage ? ' · audio track' : '';
-    const mouseLabel = mouseFieldOn ? ' · mouse field' : '';
-    const wrapStyle = fullscreen
+    const soundLabel = soundPage ? (urls.length > 1 ? ' · audio tracks' : ' · audio track') : '';
       ? 'position:fixed;inset:0;width:100%;height:100%;margin:0;line-height:0;background:transparent;z-index:0;pointer-events:none;overflow:hidden'
       : `width:100%;max-width:${w}px;margin:0 auto;position:relative;line-height:0;background:transparent;aspect-ratio:${w} / ${h}`;
     const canvasStyle = fullscreen
@@ -691,7 +821,7 @@
     const aspectPad = fullscreen
       ? ''
       : `\n  <div style="width:100%;padding-top:${ratio}%;pointer-events:none" aria-hidden="true"></div>`;
-    const pageAudioBoot = soundPage ? `\n${buildPageAudioScript('lite', soundUrl)}` : '';
+    const pageAudioBoot = soundPage ? `\n${buildPageAudioScript('lite', urls)}` : '';
 
     return `<!-- GMC · lite field + animation · ${sizeLabel}${flowLabel}${randomLabel}${soundLabel}${mouseLabel} · self-contained -->
 <div class="gmc-lite${fullscreen ? ' gmc-lite--fullscreen' : ''}" style="${wrapStyle}"${fullscreen ? ' aria-hidden="true"' : ''}>${aspectPad}
@@ -1137,21 +1267,29 @@
     const flow = isFlowIn() || !!document.getElementById('flowIn')?.checked;
     const randomize = mode === 'lite' && isRandomOnLoad();
     const soundPage = isSoundPage();
-    const soundUrl = soundPage ? readSoundUrl() : '';
+    const soundUrls = soundPage ? readSoundUrls() : [];
+    const soundUrl = soundUrls[0] || '';
     const mouseFieldOn = mode === 'lite' && isMouseField();
     const { w, h } = readDisplaySize();
     const state = captureState();
-    if (soundPage && soundUrl) state.soundUrl = soundUrl;
+    if (soundPage && soundUrls.length) {
+      state.soundUrl = soundUrl;
+      state.soundUrls = soundUrls;
+    }
     const flowNote = flow ? ' · flow-in' : '';
     const randomNote = randomize ? ' · randomize on refresh' : '';
-    const soundNote = soundPage ? (soundUrl ? ' · audio track' : ' · audio (add track URL)') : '';
+    const soundNote = soundPage
+      ? (soundUrls.length
+        ? (soundUrls.length > 1 ? ` · audio tracks (${soundUrls.length})` : ' · audio track')
+        : ' · audio (add track URL)')
+      : '';
     const mouseNote = mouseFieldOn ? ' · mouse field' : '';
 
     if (mode === 'lite') {
-      if (soundPage && !soundUrl) {
+      if (soundPage && !soundUrls.length) {
         setStatus('React to audio track is on — paste a direct audio file URL below.');
       }
-      textArea.value = buildLiteAnimationEmbed(state, w, h, full, flow, randomize, soundPage, mouseFieldOn, soundUrl);
+      textArea.value = buildLiteAnimationEmbed(state, w, h, full, flow, randomize, soundPage, mouseFieldOn, soundUrls);
       setStatus(full
         ? `Lite field + animation · full browser screen${flowNote}${randomNote}${soundNote}${mouseNote} · self-contained (no host URL)`
         : `Lite field + animation · ${w}×${h}${flowNote}${randomNote}${soundNote}${mouseNote} · self-contained (no host URL)`);
@@ -1173,7 +1311,7 @@
 
     rememberHost(host);
     const payload = encodeConfig(state);
-    textArea.value = buildIframeEmbed(payload, host, w, h, full, flow, soundPage, soundUrl);
+    textArea.value = buildIframeEmbed(payload, host, w, h, full, flow, soundPage, soundUrls);
     setStatus(full
       ? `Live player · full browser screen${flowNote}${soundNote} · paste into an HTML embed`
       : `Live player · ${w}×${h}${flowNote}${soundNote} · paste into an HTML embed`);
@@ -1216,9 +1354,17 @@
     syncModeUi();
     generate();
   });
-  soundUrlInput?.addEventListener('change', () => {
-    readSoundUrl();
+  soundUrlAddBtn?.addEventListener('click', () => {
+    addSoundUrlSlot('');
+    soundUrlInputs().at(-1)?.focus();
+    persistSoundUrls(readSoundUrls());
     generate();
+  });
+  soundUrlInputs().forEach((input) => {
+    input.addEventListener('change', () => {
+      persistSoundUrls(readSoundUrls());
+      generate();
+    });
   });
   mouseFieldInput?.addEventListener('change', () => {
     syncModeUi();

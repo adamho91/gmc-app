@@ -353,6 +353,37 @@ function restartFlowIn() {
   _animLast = null;
 }
 
+function isAnimLoopableOn() {
+  return !!document.getElementById('animLoopable')?.checked;
+}
+
+function readLoopablePeriod() {
+  const d = Number(document.getElementById('video-duration')?.value);
+  return Math.max(1, Math.min(30, Number.isFinite(d) && d > 0 ? d : 3));
+}
+
+/** Map wall time into 0 → period/2 → 0 so a looping clip joins at the start. */
+function pingPongAnimTime(wallTime, period) {
+  const p = Math.max(1e-6, Number(period) || 1);
+  let x = Number(wallTime) || 0;
+  x = ((x % p) + p) % p;
+  return x <= p * 0.5 ? x : p - x;
+}
+
+function motionAnimTime(wallTime, period) {
+  if (!isAnimLoopableOn()) return wallTime;
+  return pingPongAnimTime(wallTime, period == null ? readLoopablePeriod() : period);
+}
+
+/** Wall-clock time for a video frame. Loopable remapping happens in draw via motionAnimTime. */
+function exportAnimTimeForFrame(index, totalFrames, duration) {
+  const dur = Math.max(1e-6, Number(duration) || 1);
+  const frames = Math.max(1, totalFrames | 0);
+  if (!isAnimLoopableOn()) return (index / frames) * dur;
+  /* Inclusive endpoints so frame 0 and the last frame both land on 0 after ping-pong. */
+  return frames <= 1 ? 0 : (index / (frames - 1)) * dur;
+}
+
 function flowEase01(t) {
   if (t <= 0) return 0;
   if (t >= 1) return 1;
@@ -594,6 +625,8 @@ function draw(newSeed, opts) {
   const metaDrift    = parseFloat(document.getElementById('metaDrift').value);
   const metaPulse    = parseFloat(document.getElementById('metaPulse').value);
   const metaFlow     = parseFloat(document.getElementById('metaFlow').value);
+  /* Loopable remaps continuous time into a ping-pong; flow-in still uses raw animTime. */
+  const motionTime   = motionAnimTime(animTime, opts && opts.loopPeriod);
 
   const outW = metrics.W;
   const outH = metrics.H;
@@ -629,7 +662,7 @@ function draw(newSeed, opts) {
   let warpTimePhase = 0;
   const warpAnimOn = warpOsc && warpOscAmt > 0;
   if (warpAnimOn) {
-    warpTimePhase = animTime * warpOscSpeed * 2.5;
+    warpTimePhase = motionTime * warpOscSpeed * 2.5;
     const breathe = Math.sin(warpTimePhase) * warpOscAmt;
     effWarpStr = clamp01(warpStr * (1 + breathe * 0.85));
     effWarpSize = clamp01(warpSize * (1 + breathe * 0.65));
@@ -882,7 +915,7 @@ function draw(newSeed, opts) {
             const rdx = nx - 0.5, rdy = ny - 0.5;
             const rdist = Math.sqrt(rdx*rdx + rdy*rdy);
             const phase = rdist * dotOscWave * Math.PI * 2;
-            const oscMul = 1 + Math.sin(animTime * dotOscSpeed * 2.5 - phase) * dotOscAmt;
+            const oscMul = 1 + Math.sin(motionTime * dotOscSpeed * 2.5 - phase) * dotOscAmt;
             baseR *= Math.max(0, oscMul);
           }
           // Bass → bigger dots; treble → smaller dots (infl ≈ size strength).
@@ -975,7 +1008,7 @@ function draw(newSeed, opts) {
       // making it morph/wander while keeping its seeded shape.
       let x = crr(0.05, 0.95) * W;
       let y = crr(0.05, 0.95) * H;
-      let angle = crr(0, Math.PI*2) + animTime * metaFlow * 0.35;
+      let angle = crr(0, Math.PI*2) + motionTime * metaFlow * 0.35;
       const stepPx = metaStep * W;
 
       const nodes = [];
@@ -988,7 +1021,7 @@ function draw(newSeed, opts) {
         // Vary size with metaSVar, then Pulse Speed breathes the radius.
         const baseSize = metaSize * W;
         let r = baseSize * (1 + crr(-metaSVar*0.6, metaSVar*0.8));
-        if (metaPulse > 0) r *= 1 + Math.sin(animTime * metaPulse * 2.2 + phase) * 0.16;
+        if (metaPulse > 0) r *= 1 + Math.sin(motionTime * metaPulse * 2.2 + phase) * 0.16;
         r = Math.max(2, r) * Math.max(0.001, metaAppear);
         // Decide: ring or filled (metaRing = probability of ring)
         const isRing = crand() < metaRing;
@@ -998,8 +1031,8 @@ function draw(newSeed, opts) {
         let nx2 = x, ny2 = y;
         if (metaDrift > 0) {
           const amp = stepPx * 0.28 * metaDrift;
-          nx2 += Math.sin(animTime * metaDrift * 1.3 + phase) * amp;
-          ny2 += Math.cos(animTime * metaDrift * 1.1 + phase * 1.7) * amp;
+          nx2 += Math.sin(motionTime * metaDrift * 1.3 + phase) * amp;
+          ny2 += Math.cos(motionTime * metaDrift * 1.1 + phase * 1.7) * amp;
         }
         /* Inset by radius so rings/fills aren't sliced by the canvas edge. */
         nx2 = Math.max(pad, Math.min(W - pad, nx2));
@@ -1275,6 +1308,7 @@ for (const [id, valId] of Object.entries(SLIDERS)) {
 });
 
 document.getElementById('dotOsc').addEventListener('change', () => { saveCurrentState(); draw(); });
+document.getElementById('animLoopable')?.addEventListener('change', () => { saveCurrentState(); draw(); });
 document.getElementById('warpOsc').addEventListener('change', () => { saveCurrentState(); draw(); });
 document.getElementById('soundIn')?.addEventListener('change', async () => {
   const on = document.getElementById('soundIn').checked;
@@ -1398,7 +1432,7 @@ document.getElementById('btn-svg-copy').addEventListener('click', () => {
 const ALL_SLIDER_IDS = Object.keys(SLIDERS);
 const META_STROKE_IDS = new Set(['ends', 'deep', 'mix_deep', 'family_random', 'all_swatches', 'black', 'legacy_mid']);
 const ALL_SELECT_IDS = ['checkerStyle','palette','patType','patColor','patBlend','warpType','metaMode','metaColor','metaStroke'];
-const ALL_CHECKBOX_IDS = ['canvasPrimitiveLock', 'canvasFreeScale', 'canvasKeepSymmetric', 'checkerGrid', 'dotOsc', 'warpOsc', 'flowIn', 'soundIn', 'mouseIn'];
+const ALL_CHECKBOX_IDS = ['canvasPrimitiveLock', 'canvasFreeScale', 'canvasKeepSymmetric', 'checkerGrid', 'dotOsc', 'warpOsc', 'flowIn', 'soundIn', 'mouseIn', 'animLoopable'];
 const LS_STATE_KEY   = 'gmc_state';
 const LS_PRESETS_KEY = 'gmc_presets';
 const IDB_NAME = 'gmc-generator';
@@ -2002,7 +2036,10 @@ function bootGenerator() {
     embedPageSound = false;
   }
   if (embedPageSound) {
-    const trackUrl = String(embedState?.soundUrl || '').trim();
+    const urls = Array.isArray(embedState?.soundUrls)
+      ? embedState.soundUrls
+      : [];
+    const trackUrl = String(urls[0] || embedState?.soundUrl || '').trim();
     if (trackUrl) SoundInput.startUrlTrack(trackUrl);
   }
   syncFlowInFlag();

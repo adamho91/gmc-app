@@ -398,7 +398,7 @@
     const gop = Math.max(12, Math.round(fps * 2));
 
     for (let index = 0; index < totalFrames; index += 1) {
-      animTime = (index / totalFrames) * duration;
+      animTime = exportAnimTimeForFrame(index, totalFrames, duration);
       draw(currentSeed, drawOpts);
       if (sourceCanvas.width !== width || sourceCanvas.height !== height) {
         throw new Error(`Export frame size mismatch (${sourceCanvas.width}×${sourceCanvas.height} ≠ ${width}×${height}).`);
@@ -551,7 +551,7 @@
     for (let index = 0; index < totalFrames; index += 1) {
       const pipelineError = pipeline.getError();
       if (pipelineError) throw pipelineError;
-      animTime = (index / totalFrames) * duration;
+      animTime = exportAnimTimeForFrame(index, totalFrames, duration);
       draw(currentSeed, drawOpts);
       if (sourceCanvas.width !== width || sourceCanvas.height !== height) {
         throw new Error(`Export frame size mismatch (${sourceCanvas.width}×${sourceCanvas.height} ≠ ${width}×${height}).`);
@@ -658,7 +658,10 @@
 
     const originalTime = animTime;
     const exportSize = resolveExportSize(targetPx);
-    const drawOpts = targetPx > 0 ? { exportWidth: exportSize.width, exportHeight: exportSize.height } : undefined;
+    const drawOpts = {
+      ...(targetPx > 0 ? { exportWidth: exportSize.width, exportHeight: exportSize.height } : {}),
+      loopPeriod: duration,
+    };
     const sizeLabel = targetPx > 0 ? `${exportSize.width}×${exportSize.height}` : 'live';
     const totalFrames = Math.max(1, Math.round(duration * fps));
     const frameDurationUs = Math.round(1_000_000 / fps);

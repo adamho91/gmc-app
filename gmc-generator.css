@@ -709,6 +709,53 @@
     font-size: 10px;
     outline: none;
   }
+  #embed-modal .embed-sound-url-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 4px;
+  }
+  #embed-modal .embed-sound-url-slot {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  #embed-modal .embed-sound-url-slot input {
+    flex: 1;
+    min-width: 0;
+  }
+  #embed-modal .embed-sound-url-remove {
+    flex: 0 0 auto;
+    padding: 6px 8px;
+    border: 1px solid #333;
+    background: #1a1a1a;
+    color: #aaa;
+    font-family: inherit;
+    font-size: 10px;
+    cursor: pointer;
+  }
+  #embed-modal .embed-sound-url-remove:hover {
+    color: #eee;
+    border-color: #555;
+  }
+  #embed-modal .embed-sound-url-add {
+    margin-top: 6px;
+    padding: 6px 10px;
+    border: 1px dashed #444;
+    background: transparent;
+    color: #bbb;
+    font-family: inherit;
+    font-size: 10px;
+    cursor: pointer;
+    width: 100%;
+  }
+  #embed-modal .embed-sound-url-add:hover {
+    border-color: #666;
+    color: #eee;
+  }
+  #embed-modal .embed-sound-url-add[hidden] {
+    display: none;
+  }
   #embed-modal textarea {
     width: 100%;
     min-height: 160px;
