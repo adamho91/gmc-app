@@ -503,8 +503,9 @@
       width: min(188px, calc(100vw - 180px));
       max-height: min(72vh, calc(100% - 20px));
       min-height: 140px;
-      display: flex;
-      flex-direction: column;
+      display: grid;
+      grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+      align-content: start;
       gap: 6px;
       padding: 8px 10px;
       background: rgba(255, 255, 255, 0.95);
@@ -513,9 +514,10 @@
       box-shadow: 0 2px 14px rgba(0, 0, 0, 0.07);
       overflow: hidden;
       box-sizing: border-box;
+      min-width: 0;
     }
     #canvas-preset-controls > :not(#canvas-preset-list) {
-      flex-shrink: 0;
+      min-height: 0;
     }
     #canvas-preset-controls .canvas-hud-title {
       margin: 0;
@@ -576,8 +578,9 @@
       overflow-y: auto;
       overscroll-behavior: contain;
       -webkit-overflow-scrolling: touch;
-      min-height: 64px;
-      flex: 1 1 auto;
+      min-height: 0;
+      height: 100%;
+      align-self: stretch;
     }
     .canvas-preset-empty {
       font-family: var(--mono);

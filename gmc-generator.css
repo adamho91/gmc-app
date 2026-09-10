@@ -450,8 +450,9 @@
     top: 10px;
     right: 10px;
     z-index: 5;
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+    align-content: start;
     gap: 6px;
     padding: 8px 10px;
     width: min(188px, calc(100% - 20px));
@@ -464,9 +465,10 @@
     pointer-events: auto;
     overflow: hidden;
     box-sizing: border-box;
+    min-width: 0;
   }
   #canvas-preset-controls > :not(#preset-list) {
-    flex-shrink: 0;
+    min-height: 0;
   }
   #canvas-preset-controls .canvas-hud-title {
     font-size: 10px;
@@ -535,8 +537,9 @@
     overflow-y: auto;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
-    min-height: 64px;
-    flex: 1 1 auto;
+    min-height: 0;
+    height: 100%;
+    align-self: stretch;
     margin-top: 2px;
   }
   #canvas-preset-controls .preset-empty {
