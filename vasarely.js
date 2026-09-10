@@ -370,6 +370,7 @@
     const palName = (document.getElementById("vaz-palette") || {}).value || "fal";
     const checkerStyle = (document.getElementById("vaz-checker") || {}).value || "light";
     const checkerGrid = document.getElementById("vaz-checker-grid")?.checked === true;
+    const showBlobs = document.getElementById("vaz-show-blobs")?.checked !== false;
     const checkerVar = readNum("vaz-checkervar", 0.12);
     const warpType = (document.getElementById("vaz-warp") || {}).value || "none";
     const warpStr = readNum("vaz-warpstr", 0.45);
@@ -604,7 +605,9 @@
       const { px, py } = compWarp(nu, nv);
       return { x: px, y: py, scale: 1 };
     };
-    const drawDots = metaMode !== "replace";
+    const drawDots = showBlobs && metaMode !== "replace";
+    /* No checker + no blobs → leave field empty so only typography shows. */
+    const fieldEmpty = !checkerGrid && !showBlobs;
 
     if (sphereMap) {
       const { w: WW, h: HH } = S.getWrapSize();
@@ -640,7 +643,7 @@
       svg.setAttribute("width", String(WW));
       svg.setAttribute("height", String(HH));
 
-      checkerEls = [`<rect width="${WW}" height="${HH}" fill="${bgA}"/>`];
+      checkerEls = fieldEmpty ? [] : [`<rect width="${WW}" height="${HH}" fill="${bgA}"/>`];
       if (checkerGrid) {
         for (let row = 0; row < ROWS; row++) {
           for (let col = 0; col < COLS; col++) {
@@ -727,7 +730,7 @@
       svg.setAttribute("width", String(Wflat));
       svg.setAttribute("height", String(Hflat));
 
-      const skipFlatMatte = !sphereMap && S?.isExportTransparentBg?.();
+      const skipFlatMatte = fieldEmpty || (!sphereMap && S?.isExportTransparentBg?.());
       checkerEls = skipFlatMatte ? [] : [`<rect width="${Wflat}" height="${Hflat}" fill="${bgA}"/>`];
       if (checkerGrid) {
         for (let row = 0; row < ROWS; row++) {
@@ -950,7 +953,7 @@
       const el = document.getElementById(id);
       if (el && "value" in el) snap[id] = el.value;
     }
-    for (const id of ["vaz-sphere", "vaz-checker-grid"]) {
+    for (const id of ["vaz-sphere", "vaz-checker-grid", "vaz-show-blobs"]) {
       const el = document.getElementById(id);
       if (el) snap[id] = !!el.checked;
     }
@@ -976,7 +979,7 @@
     ["vaz-palette", "vaz-checker", "vaz-warp", "vaz-meta-mode", "vaz-meta-color", "vaz-meta-stroke"].forEach((id) => {
       if (snap[id] !== undefined) setIf(id, snap[id]);
     });
-    ["vaz-sphere", "vaz-checker-grid"].forEach((id) => {
+    ["vaz-sphere", "vaz-checker-grid", "vaz-show-blobs"].forEach((id) => {
       if (snap[id] !== undefined) setIf(id, snap[id]);
     });
     ["vaz-tw", "vaz-th", "vaz-tcell"].forEach((id) => {
@@ -1041,7 +1044,7 @@
         else setIf(id, snap[id]);
       }
     });
-    ["vaz-sphere", "vaz-checker-grid"].forEach((id) => {
+    ["vaz-sphere", "vaz-checker-grid", "vaz-show-blobs"].forEach((id) => {
       if (snap[id] !== undefined) setIf(id, snap[id]);
     });
     ["vaz-tw", "vaz-th", "vaz-tcell"].forEach((id) => {
@@ -1101,6 +1104,10 @@
       });
     });
     document.getElementById("vaz-checker-grid")?.addEventListener("change", () => {
+      draw();
+      schedulePersistVasLocal();
+    });
+    document.getElementById("vaz-show-blobs")?.addEventListener("change", () => {
       draw();
       schedulePersistVasLocal();
     });
