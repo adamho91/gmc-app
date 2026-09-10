@@ -540,9 +540,12 @@
     .canvas-preset-actions {
       display: flex;
       gap: 4px;
+      flex-shrink: 0;
     }
     .canvas-preset-btn {
-      flex: 1;
+      flex: 1 1 0;
+      flex-shrink: 1;
+      min-width: 0;
       font-family: var(--mono);
       font-size: 7.5px;
       font-weight: 500;
@@ -554,6 +557,8 @@
       background: transparent;
       color: var(--muted);
       border-radius: 4px;
+      white-space: nowrap;
+      line-height: 1.2;
     }
     .canvas-preset-btn:hover {
       color: var(--text);
@@ -573,6 +578,7 @@
     #canvas-preset-list {
       display: flex;
       flex-direction: column;
+      flex-wrap: nowrap;
       gap: 3px;
       overflow-x: hidden;
       overflow-y: auto;
@@ -581,6 +587,11 @@
       min-height: 0;
       height: 100%;
       align-self: stretch;
+      align-content: start;
+      justify-content: flex-start;
+    }
+    #canvas-preset-list > * {
+      flex-shrink: 0;
     }
     .canvas-preset-empty {
       font-family: var(--mono);
@@ -591,6 +602,8 @@
     .canvas-preset-item {
       display: flex;
       align-items: stretch;
+      flex: 0 0 auto;
+      flex-shrink: 0;
       border: 1px solid rgba(0, 0, 0, 0.1);
       border-radius: 4px;
       overflow: hidden;
@@ -601,7 +614,9 @@
       background: rgba(0, 0, 0, 0.05);
     }
     .canvas-preset-load {
-      flex: 1;
+      flex: 1 1 auto;
+      flex-shrink: 1;
+      min-width: 0;
       border: none;
       background: transparent;
       font-family: var(--mono);
@@ -614,6 +629,7 @@
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      line-height: 1.35;
     }
     .canvas-preset-item.is-active .canvas-preset-load {
       color: var(--text);
@@ -623,6 +639,7 @@
       color: var(--text);
     }
     .canvas-preset-del {
+      flex: 0 0 auto;
       border: none;
       border-left: 1px solid rgba(0, 0, 0, 0.1);
       background: transparent;

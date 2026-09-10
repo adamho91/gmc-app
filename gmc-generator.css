@@ -186,6 +186,8 @@
     display: flex;
     align-items: center;
     gap: 0;
+    flex: 0 0 auto;
+    flex-shrink: 0;
     border: 1px solid #2a2a2a;
   }
   .preset-item.active { border-color: #666666; }
@@ -532,6 +534,7 @@
   #canvas-preset-controls #preset-list {
     display: flex;
     flex-direction: column;
+    flex-wrap: nowrap;
     gap: 4px;
     overflow-x: hidden;
     overflow-y: auto;
@@ -540,7 +543,12 @@
     min-height: 0;
     height: 100%;
     align-self: stretch;
+    align-content: start;
+    justify-content: flex-start;
     margin-top: 2px;
+  }
+  #canvas-preset-controls #preset-list > * {
+    flex-shrink: 0;
   }
   #canvas-preset-controls .preset-empty {
     font-size: 8px;
@@ -552,6 +560,8 @@
     background: rgba(0, 0, 0, 0.02);
     border-radius: 4px;
     overflow: hidden;
+    flex: 0 0 auto;
+    flex-shrink: 0;
   }
   #canvas-preset-controls .preset-item.active {
     border-color: rgba(0, 0, 0, 0.28);
