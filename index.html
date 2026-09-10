@@ -502,6 +502,7 @@
     #canvas-preset-controls {
       width: min(188px, calc(100vw - 180px));
       max-height: min(72vh, calc(100% - 20px));
+      min-height: 140px;
       display: flex;
       flex-direction: column;
       gap: 6px;
@@ -511,6 +512,10 @@
       border-radius: 8px;
       box-shadow: 0 2px 14px rgba(0, 0, 0, 0.07);
       overflow: hidden;
+      box-sizing: border-box;
+    }
+    #canvas-preset-controls > :not(#canvas-preset-list) {
+      flex-shrink: 0;
     }
     #canvas-preset-controls .canvas-hud-title {
       margin: 0;
@@ -567,9 +572,12 @@
       display: flex;
       flex-direction: column;
       gap: 3px;
+      overflow-x: hidden;
       overflow-y: auto;
-      min-height: 0;
-      flex: 1;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+      min-height: 64px;
+      flex: 1 1 auto;
     }
     .canvas-preset-empty {
       font-family: var(--mono);
@@ -635,13 +643,51 @@
     #canvas-meta-controls {
       width: min(var(--canvas-hud-width), calc(100% - 20px));
       max-height: min(52vh, calc(100% - 20px));
+      overflow-x: hidden;
       overflow-y: auto;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
       padding: 8px 8px 6px;
       background: rgba(255, 255, 255, 0.95);
       border: 1px solid rgba(0, 0, 0, 0.08);
       border-radius: 8px;
       box-shadow: 0 2px 14px rgba(0, 0, 0, 0.07);
       pointer-events: auto;
+      box-sizing: border-box;
+    }
+    .gmc-float-panel {
+      box-sizing: border-box;
+    }
+    .gmc-float-panel.is-dragging,
+    .gmc-float-panel.is-resizing {
+      user-select: none;
+      z-index: 40 !important;
+    }
+    .gmc-float-handle {
+      cursor: grab;
+      touch-action: none;
+      user-select: none;
+    }
+    .gmc-float-panel.is-dragging .gmc-float-handle,
+    .gmc-float-handle:active {
+      cursor: grabbing;
+    }
+    .gmc-float-resize {
+      position: absolute;
+      right: 1px;
+      bottom: 1px;
+      width: 14px;
+      height: 14px;
+      cursor: nwse-resize;
+      touch-action: none;
+      z-index: 3;
+      background:
+        linear-gradient(135deg, transparent 0 46%, rgba(0, 0, 0, 0.22) 46% 54%, transparent 54% 70%, rgba(0, 0, 0, 0.22) 70% 78%, transparent 78%);
+      border-radius: 0 0 7px 0;
+    }
+    .gmc-float-resize:hover {
+      background:
+        linear-gradient(135deg, transparent 0 46%, rgba(0, 0, 0, 0.4) 46% 54%, transparent 54% 70%, rgba(0, 0, 0, 0.4) 70% 78%, transparent 78%);
     }
     #canvas-glass-controls {
       position: absolute;
@@ -821,17 +867,22 @@
       align-items: center;
       justify-content: center;
       padding: 16px;
+      overflow: auto;
     }
     #export-embed-modal .export-embed-panel {
       background: #141414;
       border: 1px solid #333;
       padding: 16px;
       width: min(520px, 100%);
-      max-height: min(88vh, 640px);
+      max-height: min(88vh, 720px);
       display: flex;
       flex-direction: column;
       gap: 10px;
       border-radius: 8px;
+      overflow: auto;
+      overscroll-behavior: contain;
+      position: relative;
+      box-sizing: border-box;
     }
     #export-embed-modal .export-embed-title {
       font-family: var(--mono);
@@ -840,6 +891,9 @@
       letter-spacing: 0.14em;
       text-transform: uppercase;
       color: #888;
+      cursor: grab;
+      touch-action: none;
+      user-select: none;
     }
     #export-embed-text {
       background: #0a0a0a;
@@ -2076,7 +2130,42 @@
   <script defer src="vasarely.js"></script>
   <script defer src="bundled-font-data.js"></script>
   <script defer src="bundled-fonts.js"></script>
+  <script defer src="float-panels.js"></script>
   <script defer src="presets.js"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const wrap = document.getElementById("canvas-wrap");
+      const FP = window.GMCFloatPanels;
+      if (!FP) return;
+      const hud = [
+        ["canvas-preset-controls", "gmc-float-presets", 170, 160],
+        ["canvas-meta-controls", "gmc-float-meta", 200, 160],
+        ["canvas-glass-controls", "gmc-float-glass", 200, 140],
+        ["canvas-export-controls", "gmc-float-export", 220, 180],
+      ];
+      hud.forEach(([id, key, minW, minH]) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        FP.enable(el, {
+          boundsEl: wrap || document.documentElement,
+          storageKey: key,
+          minWidth: minW,
+          minHeight: minH,
+          handle: ".canvas-hud-title",
+        });
+      });
+      const embedPanel = document.querySelector("#export-embed-modal .export-embed-panel");
+      if (embedPanel) {
+        FP.enable(embedPanel, {
+          boundsEl: document.getElementById("export-embed-modal") || document.documentElement,
+          storageKey: "gmc-float-export-embed",
+          minWidth: 280,
+          minHeight: 220,
+          handle: ".export-embed-title",
+        });
+      }
+    });
+  </script>
   <script defer src="spinner.js"></script>
   <script defer src="lottie-export.js"></script>
   <script defer src="svg-export.js"></script>

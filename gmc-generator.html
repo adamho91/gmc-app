@@ -549,8 +549,8 @@
 </div>
 
 <div id="import-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:100;align-items:center;justify-content:center;">
-  <div style="background:#141414;border:1px solid #333333;padding:20px;width:420px;display:flex;flex-direction:column;gap:12px;">
-    <div style="font-size:10px;font-weight:700;letter-spacing:0.15em;color:#888888;text-transform:uppercase">Import Preset Key</div>
+  <div class="gmc-preset-modal-panel" role="dialog" aria-label="Import preset" style="background:#141414;border:1px solid #333333;padding:20px;width:420px;display:flex;flex-direction:column;gap:12px;position:relative;box-sizing:border-box;max-height:min(88vh,640px);overflow:auto;">
+    <div class="gmc-preset-modal-title" style="font-size:10px;font-weight:700;letter-spacing:0.15em;color:#888888;text-transform:uppercase;cursor:grab;user-select:none;touch-action:none">Import Preset Key</div>
     <textarea id="import-text" style="background:#0a0a0a;color:#cccccc;border:1px solid #333333;font-family:inherit;font-size:10px;padding:8px;height:120px;resize:none;outline:none;" placeholder="Paste key here…"></textarea>
     <div style="display:flex;gap:8px">
       <button class="preset-btn" id="btn-import-confirm" style="flex:1">Import</button>
@@ -561,8 +561,8 @@
 </div>
 
 <div id="export-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:100;align-items:center;justify-content:center;">
-  <div style="background:#141414;border:1px solid #333333;padding:20px;width:420px;display:flex;flex-direction:column;gap:12px;">
-    <div style="font-size:10px;font-weight:700;letter-spacing:0.15em;color:#888888;text-transform:uppercase">Export Preset Key</div>
+  <div class="gmc-preset-modal-panel" role="dialog" aria-label="Export preset" style="background:#141414;border:1px solid #333333;padding:20px;width:420px;display:flex;flex-direction:column;gap:12px;position:relative;box-sizing:border-box;max-height:min(88vh,640px);overflow:auto;">
+    <div class="gmc-preset-modal-title" style="font-size:10px;font-weight:700;letter-spacing:0.15em;color:#888888;text-transform:uppercase;cursor:grab;user-select:none;touch-action:none">Export Preset Key</div>
     <textarea id="export-text" style="background:#0a0a0a;color:#cccccc;border:1px solid #333333;font-family:inherit;font-size:10px;padding:8px;height:120px;resize:none;outline:none;" readonly></textarea>
     <div style="display:flex;gap:8px">
       <button class="preset-btn" id="btn-export-copy" style="flex:1">Copy to Clipboard</button>
@@ -571,10 +571,47 @@
   </div>
 </div>
 
+<script src="float-panels.js"></script>
 <script src="gmc-generator-presets.js"></script>
 <script src="gmc-generator.js"></script>
 <script src="gmc-generator-video-export.js"></script>
 <script src="gmc-generator-embed-export.js"></script>
 <script src="dial-sliders.js"></script>
+<script>
+  document.addEventListener("DOMContentLoaded", () => {
+    const FP = window.GMCFloatPanels;
+    if (!FP) return;
+    const area = document.getElementById("canvas-area");
+    const preset = document.getElementById("canvas-preset-controls");
+    if (preset) {
+      FP.enable(preset, {
+        boundsEl: area || document.documentElement,
+        storageKey: "gmc-2d-float-presets",
+        minWidth: 170,
+        minHeight: 160,
+        handle: ".canvas-hud-title",
+      });
+    }
+    const embedPanel = document.querySelector("#embed-modal .embed-modal-panel");
+    if (embedPanel) {
+      FP.enable(embedPanel, {
+        boundsEl: document.getElementById("embed-modal") || document.documentElement,
+        storageKey: "gmc-2d-float-embed-modal",
+        minWidth: 280,
+        minHeight: 240,
+        handle: ".embed-modal-title",
+      });
+    }
+    document.querySelectorAll("#import-modal .gmc-preset-modal-panel, #export-modal .gmc-preset-modal-panel").forEach((panel, i) => {
+      FP.enable(panel, {
+        boundsEl: panel.parentElement || document.documentElement,
+        storageKey: i === 0 ? "gmc-2d-float-import-modal" : "gmc-2d-float-export-modal",
+        minWidth: 280,
+        minHeight: 200,
+        handle: ".gmc-preset-modal-title",
+      });
+    });
+  });
+</script>
 </body>
 </html>

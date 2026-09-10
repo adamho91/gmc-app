@@ -456,11 +456,17 @@
     padding: 8px 10px;
     width: min(188px, calc(100% - 20px));
     max-height: min(52vh, calc(100% - 20px));
+    min-height: 140px;
     background: rgba(255, 255, 255, 0.95);
     border: 1px solid rgba(0, 0, 0, 0.08);
     border-radius: 8px;
     box-shadow: 0 2px 14px rgba(0, 0, 0, 0.18);
     pointer-events: auto;
+    overflow: hidden;
+    box-sizing: border-box;
+  }
+  #canvas-preset-controls > :not(#preset-list) {
+    flex-shrink: 0;
   }
   #canvas-preset-controls .canvas-hud-title {
     font-size: 10px;
@@ -469,6 +475,9 @@
     text-transform: none;
     color: #888888;
     margin: 0;
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
   }
   #preset-name-input {
     width: 100%;
@@ -522,9 +531,12 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
+    overflow-x: hidden;
     overflow-y: auto;
-    min-height: 0;
-    flex: 1;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    min-height: 64px;
+    flex: 1 1 auto;
     margin-top: 2px;
   }
   #canvas-preset-controls .preset-empty {
@@ -641,6 +653,8 @@
     overflow-y: auto;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
+    position: relative;
+    box-sizing: border-box;
   }
   /* display:flex on fields overrides the native [hidden] attribute */
   #embed-modal [hidden] {
@@ -653,6 +667,39 @@
     text-transform: uppercase;
     color: #888888;
     flex: 0 0 auto;
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+  }
+  .gmc-float-panel {
+    box-sizing: border-box;
+  }
+  .gmc-float-panel.is-dragging,
+  .gmc-float-panel.is-resizing {
+    user-select: none;
+    z-index: 40 !important;
+  }
+  .gmc-float-handle {
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+  }
+  .gmc-float-panel.is-dragging .gmc-float-handle,
+  .gmc-float-handle:active {
+    cursor: grabbing;
+  }
+  .gmc-float-resize {
+    position: absolute;
+    right: 1px;
+    bottom: 1px;
+    width: 14px;
+    height: 14px;
+    cursor: nwse-resize;
+    touch-action: none;
+    z-index: 3;
+    background:
+      linear-gradient(135deg, transparent 0 46%, rgba(255, 255, 255, 0.28) 46% 54%, transparent 54% 70%, rgba(255, 255, 255, 0.28) 70% 78%, transparent 78%);
+    border-radius: 0 0 7px 0;
   }
   #embed-modal .embed-modal-hint {
     font-size: 9px;
