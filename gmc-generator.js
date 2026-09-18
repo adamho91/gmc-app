@@ -343,7 +343,7 @@ const SoundInput = (() => {
 })();
 
 function syncFlowInFlag() {
-  embedFlowIn = !!document.getElementById('flowIn')?.checked || embedUrlFlowIn;
+  embedFlowIn = !!document.getElementById('flowIn')?.checked || isFlowInOutOn() || embedUrlFlowIn;
   return embedFlowIn;
 }
 
@@ -351,6 +351,10 @@ function restartFlowIn() {
   if (!syncFlowInFlag()) return;
   animTime = 0;
   _animLast = null;
+}
+
+function isFlowInOutOn() {
+  return !!document.getElementById('flowInOut')?.checked;
 }
 
 function isAnimLoopableOn() {
@@ -379,7 +383,8 @@ function motionAnimTime(wallTime, period) {
 function exportAnimTimeForFrame(index, totalFrames, duration) {
   const dur = Math.max(1e-6, Number(duration) || 1);
   const frames = Math.max(1, totalFrames | 0);
-  if (!isAnimLoopableOn()) return (index / frames) * dur;
+  const needsInclusiveEnd = isAnimLoopableOn() || isFlowInOutOn();
+  if (!needsInclusiveEnd) return (index / frames) * dur;
   /* Inclusive endpoints so frame 0 and the last frame both land on 0 after ping-pong. */
   return frames <= 1 ? 0 : (index / (frames - 1)) * dur;
 }
@@ -390,9 +395,14 @@ function flowEase01(t) {
   return 1 - Math.pow(1 - t, 3);
 }
 
-function flowLayerAppear(delayFrac, rise = 0.3) {
+function flowAnimTime(wallTime, period) {
+  if (!embedFlowIn || !isFlowInOutOn()) return wallTime;
+  return pingPongAnimTime(wallTime, period == null ? readLoopablePeriod() : period);
+}
+
+function flowLayerAppear(delayFrac, rise = 0.3, tNow = animTime) {
   if (!embedFlowIn) return 1;
-  return flowEase01((animTime - EMBED_FLOW_DUR * delayFrac) / rise);
+  return flowEase01((tNow - EMBED_FLOW_DUR * delayFrac) / rise);
 }
 
 function embedFlowAppear(col, row, bias, tNow, seed) {
@@ -625,8 +635,9 @@ function draw(newSeed, opts) {
   const metaDrift    = parseFloat(document.getElementById('metaDrift').value);
   const metaPulse    = parseFloat(document.getElementById('metaPulse').value);
   const metaFlow     = parseFloat(document.getElementById('metaFlow').value);
-  /* Loopable remaps continuous time into a ping-pong; flow-in still uses raw animTime. */
+  /* Loopable remaps motion into ping-pong; flow can opt into the same in/out timing. */
   const motionTime   = motionAnimTime(animTime, opts && opts.loopPeriod);
+  const flowTime     = flowAnimTime(animTime, opts && opts.loopPeriod);
 
   const outW = metrics.W;
   const outH = metrics.H;
@@ -792,7 +803,7 @@ function draw(newSeed, opts) {
   if (checkerGrid) {
     for (let row = 0; row < ROWS; row++) {
       for (let col = 0; col < COLS; col++) {
-        const appear = embedFlowAppear(col, row, 0, animTime, currentSeed);
+        const appear = embedFlowAppear(col, row, 0, flowTime, currentSeed);
         if (appear <= 0.01) continue;
         const sc = cellScale[row * COLS + col];
         const fill = (row+col)%2===0 ? bgA : bgB;
@@ -905,7 +916,7 @@ function draw(newSeed, opts) {
           const nx = (col+0.5)/COLS, ny = (row+0.5)/ROWS;
           const infl = unitInfluence(unit, nx, ny);
           if (infl < 0.006) continue;
-          const appear = embedFlowAppear(col, row, unitBias, animTime, currentSeed);
+          const appear = embedFlowAppear(col, row, unitBias, flowTime, currentSeed);
           if (appear <= 0.02) continue;
           let baseR = CS*0.5*(dotMin+(dotMax-dotMin)*infl);
           // Oscillate dots in & out — a radial ripple emanating from the canvas
@@ -974,7 +985,7 @@ function draw(newSeed, opts) {
   // Circles vary in size. Some are filled, some are rings (hollow). Connectors
   // are rectangles bridging the gap between adjacent node edges — exactly the
   // Designers Republic / TDR visual language.
-  const metaAppear = flowLayerAppear(0.55, 0.28);
+  const metaAppear = flowLayerAppear(0.55, 0.28, flowTime);
   if (metaMode !== 'off' && metaAppear > 0.01) {
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = metaOpacity * metaAppear;
@@ -1080,7 +1091,7 @@ function draw(newSeed, opts) {
   }
 
   // ── 3. Draw overlay blobs (multiply) ─────────────────────────────────────
-  const ovAppear = flowLayerAppear(0.35, 0.3);
+  const ovAppear = flowLayerAppear(0.35, 0.3, flowTime);
   ctx.globalCompositeOperation = 'multiply';
   for (const ob of ovBlobs) {
     if (ovAppear <= 0.01) break;
@@ -1334,6 +1345,15 @@ document.getElementById('flowIn')?.addEventListener('change', () => {
   restartFlowIn();
   draw();
 });
+document.getElementById('flowInOut')?.addEventListener('change', () => {
+  if (document.getElementById('flowInOut').checked) {
+    const flowIn = document.getElementById('flowIn');
+    if (flowIn) flowIn.checked = true;
+  }
+  saveCurrentState();
+  restartFlowIn();
+  draw();
+});
 document.getElementById('checkerGrid')?.addEventListener('change', () => {
   syncCheckerGridUi();
   saveCurrentState();
@@ -1432,7 +1452,7 @@ document.getElementById('btn-svg-copy').addEventListener('click', () => {
 const ALL_SLIDER_IDS = Object.keys(SLIDERS);
 const META_STROKE_IDS = new Set(['ends', 'deep', 'mix_deep', 'family_random', 'all_swatches', 'black', 'legacy_mid']);
 const ALL_SELECT_IDS = ['checkerStyle','palette','patType','patColor','patBlend','warpType','metaMode','metaColor','metaStroke'];
-const ALL_CHECKBOX_IDS = ['canvasPrimitiveLock', 'canvasFreeScale', 'canvasKeepSymmetric', 'checkerGrid', 'dotOsc', 'warpOsc', 'flowIn', 'soundIn', 'mouseIn', 'animLoopable'];
+const ALL_CHECKBOX_IDS = ['canvasPrimitiveLock', 'canvasFreeScale', 'canvasKeepSymmetric', 'checkerGrid', 'dotOsc', 'warpOsc', 'flowIn', 'flowInOut', 'soundIn', 'mouseIn', 'animLoopable'];
 const LS_STATE_KEY   = 'gmc_state';
 const LS_PRESETS_KEY = 'gmc_presets';
 const IDB_NAME = 'gmc-generator';
@@ -1917,7 +1937,7 @@ function animFrame(now) {
                   parseFloat(document.getElementById('mouseAmt')?.value || 0) > 0 &&
                   pointerField.active;
   const chainsMoving = mode !== 'off' && (drift > 0 || pulse > 0 || flow > 0);
-  const introActive = syncFlowInFlag() && animTime < EMBED_FLOW_DUR + EMBED_FLOW_RISE + 0.15;
+  const introActive = syncFlowInFlag() && (isFlowInOutOn() || animTime < EMBED_FLOW_DUR + EMBED_FLOW_RISE + 0.15);
   if (chainsMoving || dotOscOn || warpOscOn || soundOn || mouseOn || introActive) {
     animTime += dt;
     draw();

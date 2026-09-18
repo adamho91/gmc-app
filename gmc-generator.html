@@ -387,6 +387,10 @@
         <label for="flowIn">Flow in field</label>
         <label class="switch"><input type="checkbox" id="flowIn"><span class="track"></span></label>
       </div>
+      <div class="osc-toggle-row">
+        <label for="flowInOut">Flow in/out</label>
+        <label class="switch"><input type="checkbox" id="flowInOut"><span class="track"></span></label>
+      </div>
     </div>
 
     <div class="osc-group">
@@ -493,6 +497,13 @@
         <input type="checkbox" id="embed-flow-in" />
       </label>
       <p class="embed-modal-hint">Checker + dots pop in as fast staggered clumps on load.</p>
+    </div>
+    <div class="embed-modal-field">
+      <label class="embed-toggle-row" for="embed-flow-in-out">
+        <span>Flow in/out</span>
+        <input type="checkbox" id="embed-flow-in-out" />
+      </label>
+      <p class="embed-modal-hint">Runs the same clump reveal forward and backward for looping exports/embeds.</p>
     </div>
     <div class="embed-modal-field" id="embed-random-field">
       <label class="embed-toggle-row" for="embed-random-seed">

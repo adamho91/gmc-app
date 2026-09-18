@@ -7,6 +7,7 @@
   const sizeRow = document.getElementById('embed-size-row');
   const fullscreenInput = document.getElementById('embed-fullscreen');
   const flowInInput = document.getElementById('embed-flow-in');
+  const flowInOutInput = document.getElementById('embed-flow-in-out');
   const randomSeedInput = document.getElementById('embed-random-seed');
   const soundPageInput = document.getElementById('embed-sound-page');
   const soundUrlField = document.getElementById('embed-sound-url-field');
@@ -29,6 +30,7 @@
   const MODE_KEY = 'gmc-2d-embed-mode';
   const FULL_KEY = 'gmc-2d-embed-fullscreen';
   const FLOW_KEY = 'gmc-2d-embed-flow-in';
+  const FLOW_IN_OUT_KEY = 'gmc-2d-embed-flow-in-out';
   const RANDOM_KEY = 'gmc-2d-embed-random-seed';
   const SOUND_KEY = 'gmc-2d-embed-sound-page';
   const SOUND_URL_KEY = 'gmc-2d-embed-sound-url';
@@ -58,6 +60,10 @@
 
   function isFlowIn() {
     return !!flowInInput?.checked;
+  }
+
+  function isFlowInOut() {
+    return !!flowInOutInput?.checked;
   }
 
   function isRandomOnLoad() {
@@ -237,6 +243,7 @@
       localStorage.setItem(MODE_KEY, mode);
       localStorage.setItem(FULL_KEY, full ? '1' : '0');
       localStorage.setItem(FLOW_KEY, isFlowIn() ? '1' : '0');
+      localStorage.setItem(FLOW_IN_OUT_KEY, isFlowInOut() ? '1' : '0');
       localStorage.setItem(RANDOM_KEY, isRandomOnLoad() ? '1' : '0');
       localStorage.setItem(SOUND_KEY, isSoundPage() ? '1' : '0');
       localStorage.setItem(MOUSE_KEY, isMouseField() ? '1' : '0');
@@ -258,6 +265,9 @@
     } catch (_) {}
     try {
       if (flowInInput) flowInInput.checked = localStorage.getItem(FLOW_KEY) === '1';
+    } catch (_) {}
+    try {
+      if (flowInOutInput) flowInOutInput.checked = localStorage.getItem(FLOW_IN_OUT_KEY) === '1';
     } catch (_) {}
     try {
       if (randomSeedInput) randomSeedInput.checked = localStorage.getItem(RANDOM_KEY) === '1';
@@ -642,7 +652,7 @@
 <\/script>`;
   }
 
-  function buildIframeEmbed(payload, host, w, h, fullscreen, flowIn, soundPage, soundUrls) {
+  function buildIframeEmbed(payload, host, w, h, fullscreen, flowIn, flowInOut, soundPage, soundUrls) {
     const src = buildPlayerUrl(host, payload, fullscreen, flowIn, soundPage);
     const urls = (Array.isArray(soundUrls) ? soundUrls : [soundUrls])
       .map((u) => normalizeSoundUrl(u))
@@ -651,8 +661,9 @@
     const soundLabel = soundPage ? (urls.length > 1 ? ' · audio tracks' : ' · audio track') : '';
     /* Parent can sync analysis to matching page players; iframe also gets sound=1. */
     const bridge = soundPage && urls.length ? `\n${buildPageAudioScript('live', urls)}` : '';
+    const flowLabel = flowInOut ? ' · flow in/out' : (flowIn ? ' · flow-in' : '');
     if (fullscreen) {
-      return `<!-- GMC Generator · live 2D · full browser screen${flowIn ? ' · flow-in' : ''}${soundLabel} -->
+      return `<!-- GMC Generator · live 2D · full browser screen${flowLabel}${soundLabel} -->
 <!-- Player loads from ${host} -->
 <div class="gmc-2d-embed gmc-2d-embed--fullscreen" style="position:fixed;inset:0;width:100%;height:100%;margin:0;line-height:0;background:transparent;z-index:0;pointer-events:none" aria-hidden="true">
   <iframe
@@ -665,7 +676,7 @@
 </div>${bridge}`;
     }
     const ratio = ((h / w) * 100).toFixed(4);
-    return `<!-- GMC Generator · live 2D · ${w}×${h}${flowIn ? ' · flow-in' : ''}${soundLabel} -->
+    return `<!-- GMC Generator · live 2D · ${w}×${h}${flowLabel}${soundLabel} -->
 <!-- Player loads from ${host} -->
 <div class="gmc-2d-embed" style="width:100%;max-width:${w}px;margin:0 auto;position:relative;line-height:0;background:transparent;aspect-ratio:${w} / ${h}">
   <div style="width:100%;padding-top:${ratio}%;pointer-events:none" aria-hidden="true"></div>
@@ -729,7 +740,7 @@
   }
 
   /** Self-contained canvas — checker + dots + meta animation (no iframe / full app). */
-  function buildLiteAnimationEmbed(state, w, h, fullscreen, flowIn, randomOnLoad, soundPage, mouseFieldOn, soundUrls) {
+  function buildLiteAnimationEmbed(state, w, h, fullscreen, flowIn, flowInOut, randomOnLoad, soundPage, mouseFieldOn, soundUrls) {
     const seed = Number(state.seed) || 1;
     const cols = Math.max(4, Math.round(num(state, 'cols', 35)));
     const rows = Math.max(4, Math.round(num(state, 'rows', Math.round(cols * (h / w)))));
@@ -749,6 +760,7 @@
       rows,
       fullscreen: !!fullscreen,
       flowIn: !!flowIn,
+      flowInOut: !!flowInOut,
       randomOnLoad: !!randomOnLoad,
       soundPage: !!soundPage,
       soundAmt: num(state, 'soundAmt', 0.65),
@@ -810,7 +822,7 @@
 
     const cfgJson = JSON.stringify(cfg);
     const sizeLabel = fullscreen ? 'full browser screen' : `${w}×${h}`;
-    const flowLabel = flowIn ? ' · flow-in' : '';
+    const flowLabel = flowInOut ? ' · flow in/out' : (flowIn ? ' · flow-in' : '');
     const randomLabel = randomOnLoad ? ' · randomize' : '';
     const soundLabel = soundPage ? (urls.length > 1 ? ' · audio tracks' : ' · audio track') : '';
     const mouseLabel = mouseFieldOn ? ' · mouse field' : '';
@@ -976,6 +988,14 @@
 
   /* Fast staggered clump reveal — checker first, then dots by blob clumps. */
   var FLOW_DUR=0.78,FLOW_CLUMP=5,FLOW_RISE=0.22;
+  function pingPong(t,p){
+    p=Math.max(0.001,p||3);
+    t=((t%p)+p)%p;
+    return t<=p*0.5?t:p-t;
+  }
+  function revealTime(time){
+    return C.flowInOut?pingPong(time,3):time;
+  }
   function clumpHash(cx,cy){
     var h=((cx*73856093)^(cy*19349663)^(C.seed*83492791))>>>0;
     return (h%10000)/10000;
@@ -996,6 +1016,7 @@
   function frame(now){
     requestAnimationFrame(frame);
     var time=(now-t0)/1000;
+    var flowTime=revealTime(time);
     var soundBands={bass:0,treble:0,level:0};
     if(C.soundPage&&C.soundAmt>0){
       if(typeof window.__gmcPageAudioBands==="function")soundBands=window.__gmcPageAudioBands();
@@ -1094,7 +1115,7 @@
     if(C.checkerGrid){
       for(var row=0;row<ROWS;row++){
         for(var col=0;col<COLS;col++){
-          var appear=flowAppear(col,row,0,time);
+          var appear=flowAppear(col,row,0,flowTime);
           if(appear<=0.01)continue;
           var sc=cellScale[row*COLS+col];
           var fill=(row+col)%2===0?C.bgA:C.bgB;
@@ -1121,7 +1142,7 @@
             var nx2=(col2+0.5)/COLS,ny2=(row2+0.5)/ROWS;
             var infl=influence(unit,nx2,ny2);
             if(infl<0.006)continue;
-            var appearD=flowAppear(col2,row2,unitBias,time);
+            var appearD=flowAppear(col2,row2,unitBias,flowTime);
             if(appearD<=0.02)continue;
             var baseR=CS*0.5*(C.dotMin+(C.dotMax-C.dotMin)*infl);
             if(C.dotOsc&&C.dotOscAmt>0){
@@ -1164,7 +1185,7 @@
     }
 
     if(ovBlobs.length){
-      var ovAppear=C.flowIn?Math.max(0,Math.min(1,(time-FLOW_DUR*0.35)/0.3)):1;
+      var ovAppear=C.flowIn?Math.max(0,Math.min(1,(flowTime-FLOW_DUR*0.35)/0.3)):1;
       ovAppear=ovAppear<=0?0:(ovAppear>=1?1:1-Math.pow(1-ovAppear,3));
       if(ovAppear>0.01){
         ctx.globalCompositeOperation="multiply";
@@ -1198,7 +1219,7 @@
       var crand=xorshift(C.seed^0xDEAD);
       function crr(a,b){return a+crand()*(b-a);}
       function cri(a,b){return Math.floor(crr(a,b+0.9999));}
-      var metaAppear=C.flowIn?Math.max(0,Math.min(1,(time-FLOW_DUR*0.55)/0.28)):1;
+      var metaAppear=C.flowIn?Math.max(0,Math.min(1,(flowTime-FLOW_DUR*0.55)/0.28)):1;
       metaAppear=metaAppear<=0?0:(metaAppear>=1?1:1-Math.pow(1-metaAppear,3));
       if(metaAppear>0.01){
       ctx.globalAlpha=C.opacity;
@@ -1266,7 +1287,8 @@
     }
     const mode = getEmbedMode();
     const full = isFullscreen();
-    const flow = isFlowIn() || !!document.getElementById('flowIn')?.checked;
+    const flowOut = isFlowInOut() || !!document.getElementById('flowInOut')?.checked;
+    const flow = flowOut || isFlowIn() || !!document.getElementById('flowIn')?.checked;
     const randomize = mode === 'lite' && isRandomOnLoad();
     const soundPage = isSoundPage();
     const soundUrls = soundPage ? readSoundUrls() : [];
@@ -1274,11 +1296,13 @@
     const mouseFieldOn = mode === 'lite' && isMouseField();
     const { w, h } = readDisplaySize();
     const state = captureState();
+    state.flowIn = flow;
+    state.flowInOut = flowOut;
     if (soundPage && soundUrls.length) {
       state.soundUrl = soundUrl;
       state.soundUrls = soundUrls;
     }
-    const flowNote = flow ? ' · flow-in' : '';
+    const flowNote = flowOut ? ' · flow in/out' : (flow ? ' · flow-in' : '');
     const randomNote = randomize ? ' · randomize on refresh' : '';
     const soundNote = soundPage
       ? (soundUrls.length
@@ -1291,7 +1315,7 @@
       if (soundPage && !soundUrls.length) {
         setStatus('React to audio track is on — paste a direct audio file URL below.');
       }
-      textArea.value = buildLiteAnimationEmbed(state, w, h, full, flow, randomize, soundPage, mouseFieldOn, soundUrls);
+      textArea.value = buildLiteAnimationEmbed(state, w, h, full, flow, flowOut, randomize, soundPage, mouseFieldOn, soundUrls);
       setStatus(full
         ? `Lite field + animation · full browser screen${flowNote}${randomNote}${soundNote}${mouseNote} · self-contained (no host URL)`
         : `Lite field + animation · ${w}×${h}${flowNote}${randomNote}${soundNote}${mouseNote} · self-contained (no host URL)`);
@@ -1313,7 +1337,7 @@
 
     rememberHost(host);
     const payload = encodeConfig(state);
-    textArea.value = buildIframeEmbed(payload, host, w, h, full, flow, soundPage, soundUrls);
+    textArea.value = buildIframeEmbed(payload, host, w, h, full, flow, flowOut, soundPage, soundUrls);
     setStatus(full
       ? `Live player · full browser screen${flowNote}${soundNote} · paste into an HTML embed`
       : `Live player · ${w}×${h}${flowNote}${soundNote} · paste into an HTML embed`);
@@ -1345,6 +1369,11 @@
     generate();
   });
   flowInInput?.addEventListener('change', () => {
+    syncModeUi();
+    generate();
+  });
+  flowInOutInput?.addEventListener('change', () => {
+    if (flowInOutInput.checked && flowInInput) flowInInput.checked = true;
     syncModeUi();
     generate();
   });
