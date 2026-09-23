@@ -279,7 +279,7 @@
       flat.width = srcCanvas.width;
       flat.height = srcCanvas.height;
       const flatCtx = flat.getContext("2d");
-      flatCtx.fillStyle = "#000000";
+      flatCtx.fillStyle = exportBackground.color || "#ffffff";
       flatCtx.fillRect(0, 0, flat.width, flat.height);
       flatCtx.drawImage(srcCanvas, 0, 0);
       frameCanvas = flat;
@@ -1439,7 +1439,7 @@
     };
 
     const sync = () => {
-      if (color) color.disabled = !!transparent?.checked;
+      if (color) color.disabled = false;
       exp()?.syncBackgroundPreviews?.();
     };
 
