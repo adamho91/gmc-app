@@ -424,6 +424,13 @@ const DEFAULT_CANVAS_WIDTH = 1440;
 const DEFAULT_CANVAS_HEIGHT = 1440;
 const CANVAS_DIM_MIN = 256;
 const CANVAS_DIM_MAX = 4096;
+const EXPORT_ASPECT_RATIOS = {
+  square: [1, 1],
+  landscape: [16, 9],
+  portrait: [9, 16],
+  portrait45: [4, 5],
+  landscape54: [5, 4],
+};
 
 function clampCanvasDimension(value, fallback = DEFAULT_CANVAS_WIDTH) {
   const n = Math.round(Number(value));
@@ -434,6 +441,15 @@ function clampCanvasDimension(value, fallback = DEFAULT_CANVAS_WIDTH) {
 function setCanvasDimensionLabel(id, value) {
   const label = document.getElementById(id);
   if (label) label.textContent = Math.round(value);
+}
+
+function resolveAspectDimensions(maxEdge, aspectMode) {
+  const ratio = EXPORT_ASPECT_RATIOS[aspectMode];
+  if (!ratio) return null;
+  const max = clampCanvasDimension(maxEdge || Math.max(canvas.width, canvas.height, DEFAULT_CANVAS_WIDTH));
+  const [rw, rh] = ratio;
+  if (rw >= rh) return { width: max, height: Math.max(1, Math.round(max * rh / rw)) };
+  return { width: Math.max(1, Math.round(max * rw / rh)), height: max };
 }
 
 const MAX_GRID_AXIS = 200;
@@ -1314,7 +1330,7 @@ for (const [id, valId] of Object.entries(SLIDERS)) {
   });
 });
 
-['checkerStyle','palette','patType','patColor','patBlend','warpType','metaMode','metaColor','metaStroke'].forEach(id => {
+['checkerStyle','palette','patType','patColor','patBlend','warpType','metaMode','metaColor','metaStroke','png-aspect'].forEach(id => {
   document.getElementById(id).addEventListener('change', () => { saveCurrentState(); draw(); });
 });
 
@@ -1390,10 +1406,14 @@ document.getElementById('btn-gen').addEventListener('click', () => {
   draw(Math.floor(Math.random() * 0xFFFFFF));
 });
 document.getElementById('btn-save').addEventListener('click', () => {
+  const aspectMode = document.getElementById('png-aspect')?.value || 'canvas';
+  const exportSize = resolveAspectDimensions(Math.max(canvas.width, canvas.height), aspectMode);
+  if (exportSize) draw(undefined, { exportWidth: exportSize.width, exportHeight: exportSize.height });
   const a = document.createElement('a');
   a.download = `gmc_${currentSeed}.png`;
   a.href = canvas.toDataURL('image/png');
   a.click();
+  if (exportSize) draw(currentSeed);
 });
 function buildSvgString() {
   const d = canvas._svgData;
@@ -1451,7 +1471,7 @@ document.getElementById('btn-svg-copy').addEventListener('click', () => {
 
 const ALL_SLIDER_IDS = Object.keys(SLIDERS);
 const META_STROKE_IDS = new Set(['ends', 'deep', 'mix_deep', 'family_random', 'all_swatches', 'black', 'legacy_mid']);
-const ALL_SELECT_IDS = ['checkerStyle','palette','patType','patColor','patBlend','warpType','metaMode','metaColor','metaStroke'];
+const ALL_SELECT_IDS = ['checkerStyle','palette','patType','patColor','patBlend','warpType','metaMode','metaColor','metaStroke','png-aspect'];
 const ALL_CHECKBOX_IDS = ['canvasPrimitiveLock', 'canvasFreeScale', 'canvasKeepSymmetric', 'checkerGrid', 'dotOsc', 'warpOsc', 'flowIn', 'flowInOut', 'soundIn', 'mouseIn', 'animLoopable'];
 const LS_STATE_KEY   = 'gmc_state';
 const LS_PRESETS_KEY = 'gmc_presets';
