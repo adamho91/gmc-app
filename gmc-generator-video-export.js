@@ -9,6 +9,7 @@
   const durationInput = document.getElementById('video-duration');
   const fpsInput = document.getElementById('video-fps');
   const sizeSelect = document.getElementById('video-size');
+  const aspectSelect = document.getElementById('video-aspect');
   const customWrap = document.getElementById('video-custom-wrap');
   const customSizeInput = document.getElementById('video-custom-size');
   const qualitySelect = document.getElementById('video-quality');
@@ -30,6 +31,7 @@
     durationInput,
     fpsInput,
     sizeSelect,
+    aspectSelect,
     customSizeInput,
     qualitySelect,
     bgSelect,
@@ -175,12 +177,13 @@
     }
     const quality = QUALITY[qualitySelect?.value] ? qualitySelect.value : 'standard';
     const background = bgSelect?.value === 'white' ? '#ffffff' : '#000000';
+    const aspectMode = aspectSelect?.value || 'canvas';
 
     durationInput.value = String(duration);
     fpsInput.value = String(fps);
     if (customSizeInput && sizeMode === 'custom') customSizeInput.value = String(targetPx);
 
-    return { duration, fps, sizeMode, targetPx, quality, background };
+    return { duration, fps, sizeMode, targetPx, aspectMode, quality, background };
   }
 
   function persistSettings() {
@@ -193,6 +196,7 @@
           fps: s.fps,
           size: sizeSelect?.value || '2000',
           custom: customSizeInput?.value || '2400',
+          aspect: s.aspectMode,
           quality: qualitySelect?.value || 'standard',
           bg: bgSelect?.value || 'black',
         })
@@ -211,6 +215,7 @@
       if (data.fps != null) fpsInput.value = String(data.fps);
       if (sizeSelect && data.size) sizeSelect.value = data.size;
       if (customSizeInput && data.custom) customSizeInput.value = String(data.custom);
+      if (aspectSelect && data.aspect) aspectSelect.value = data.aspect;
       if (qualitySelect && data.quality) qualitySelect.value = data.quality;
       if (bgSelect && data.bg) bgSelect.value = data.bg;
     } catch (_) {
@@ -606,10 +611,30 @@
     return { width: w, height: h };
   }
 
-  /** Export dimensions for video frames (0 = live canvas). Preserve the current canvas aspect. */
-  function resolveExportSize(targetPx) {
+  function aspectDimensions(maxEdge, aspectMode) {
+    const ratios = {
+      square: [1, 1],
+      landscape: [16, 9],
+      portrait: [9, 16],
+      portrait45: [4, 5],
+      landscape54: [5, 4],
+    };
+    const ratio = ratios[aspectMode];
+    if (!ratio) return null;
+    const max = Math.max(2, Math.min(4096, Math.round(Number(maxEdge) || 2000)));
+    const [rw, rh] = ratio;
+    if (rw >= rh) {
+      return { width: evenDimension(max), height: evenDimension(max * (rh / rw)) };
+    }
+    return { width: evenDimension(max * (rw / rh)), height: evenDimension(max) };
+  }
+
+  /** Export dimensions for video frames (0 = live canvas). */
+  function resolveExportSize(targetPx, aspectMode) {
     const MAX_EXPORT_PX = 4096;
     if (targetPx > 0) {
+      const fixedAspect = aspectDimensions(targetPx, aspectMode);
+      if (fixedAspect) return fixedAspect;
       const aspect = readCanvasAspect();
       const longest = Math.max(aspect.width, aspect.height);
       const scale = longest > 0 ? Math.min(1, MAX_EXPORT_PX / longest) * (Math.min(MAX_EXPORT_PX, targetPx) / longest) : 1;
@@ -646,7 +671,7 @@
   }
 
   async function exportVideo(format) {
-    const { duration, fps, targetPx, quality, background } = readSettings();
+    const { duration, fps, targetPx, aspectMode, quality, background } = readSettings();
     persistSettings();
 
     if (format === 'webm' && (typeof VideoEncoder === 'undefined' || typeof VideoFrame === 'undefined')) {
@@ -657,7 +682,7 @@
     if (!sourceCanvas) throw new Error('2D canvas is unavailable.');
 
     const originalTime = animTime;
-    const exportSize = resolveExportSize(targetPx);
+    const exportSize = resolveExportSize(targetPx, aspectMode);
     const drawOpts = {
       ...(targetPx > 0 ? { exportWidth: exportSize.width, exportHeight: exportSize.height } : {}),
       loopPeriod: duration,

@@ -89,6 +89,35 @@
     };
   }
 
+  function exportAspectRatio() {
+    const mode = $("export-aspect-ratio")?.value || "custom";
+    return {
+      square: [1, 1],
+      landscape: [16, 9],
+      portrait: [9, 16],
+      portrait45: [4, 5],
+      landscape54: [5, 4],
+    }[mode] || null;
+  }
+
+  function sizeForAspect(maxEdge, ratio) {
+    const max = Math.max(256, Math.min(4096, Math.round(Number(maxEdge) || 1200)));
+    if (!ratio) return { width: evenDim(max), height: evenDim(max) };
+    const [rw, rh] = ratio;
+    if (rw >= rh) {
+      return { width: evenDim(max), height: evenDim(max * (rh / rw)) };
+    }
+    return { width: evenDim(max * (rw / rh)), height: evenDim(max) };
+  }
+
+  function applyAspectToExportSize(maxEdge) {
+    const ratio = exportAspectRatio();
+    if (!ratio) return;
+    const size = sizeForAspect(maxEdge, ratio);
+    if ($("export-width")) $("export-width").value = String(size.width);
+    if ($("export-height")) $("export-height").value = String(size.height);
+  }
+
   function readExportBackground() {
     const transparent = !!$("export-bg-transparent")?.checked;
     const color = $("export-bg-color")?.value || "#ffffff";
@@ -102,8 +131,12 @@
     const fps = Math.max(1, Math.min(60, parseInt($("export-fps")?.value, 10) || 24));
     const rotations = Math.max(1, Math.min(8, parseInt($("export-rotations")?.value, 10) || 1));
     const speedPct = Math.max(50, Math.min(200, parseInt($("export-speed-pct")?.value, 10) || 100));
-    const width = evenDim(Math.max(256, Math.min(4096, parseInt($("export-width")?.value, 10) || 1200)));
-    const height = evenDim(Math.max(256, Math.min(4096, parseInt($("export-height")?.value, 10) || 1200)));
+    const aspectRatio = exportAspectRatio();
+    const rawWidth = Math.max(256, Math.min(4096, parseInt($("export-width")?.value, 10) || 1200));
+    const rawHeight = Math.max(256, Math.min(4096, parseInt($("export-height")?.value, 10) || 1200));
+    const aspectSize = aspectRatio ? sizeForAspect(Math.max(rawWidth, rawHeight), aspectRatio) : null;
+    const width = aspectSize ? aspectSize.width : evenDim(rawWidth);
+    const height = aspectSize ? aspectSize.height : evenDim(rawHeight);
     const videoQuality = VIDEO_QUALITY[$("export-video-quality")?.value]
       ? $("export-video-quality").value
       : "standard";
@@ -1303,6 +1336,7 @@
           rotations: s.rotations,
           width: s.width,
           height: s.height,
+          aspect: $("export-aspect-ratio")?.value || "custom",
           videoQuality: s.videoQuality,
           sphereSize: s.sphereSizePct,
           timingMode: s.timingMode,
@@ -1330,6 +1364,7 @@
       }
       if (data.width != null && $("export-width")) $("export-width").value = String(data.width);
       if (data.height != null && $("export-height")) $("export-height").value = String(data.height);
+      if (data.aspect && $("export-aspect-ratio")) $("export-aspect-ratio").value = data.aspect;
       if (data.videoQuality && VIDEO_QUALITY[data.videoQuality] && $("export-video-quality")) {
         $("export-video-quality").value = data.videoQuality;
       }
@@ -1355,24 +1390,33 @@
 
     presets.forEach((btn) => {
       btn.addEventListener("click", () => {
-        const w = btn.dataset.w;
-        const h = btn.dataset.h;
-        if (wEl) wEl.value = w;
-        if (hEl) hEl.value = h;
+        const maxEdge = Math.max(Number(btn.dataset.w) || 1200, Number(btn.dataset.h) || 1200);
+        if (exportAspectRatio()) {
+          applyAspectToExportSize(maxEdge);
+        } else {
+          if (wEl) wEl.value = btn.dataset.w;
+          if (hEl) hEl.value = btn.dataset.h;
+        }
         presets.forEach((b) => b.classList.toggle("is-active", b === btn));
         persistVideoSettings();
       });
     });
 
     const syncActive = () => {
-      const w = wEl?.value;
-      const h = hEl?.value;
+      const maxEdge = String(Math.max(Number(wEl?.value) || 0, Number(hEl?.value) || 0));
       presets.forEach((btn) => {
-        btn.classList.toggle("is-active", btn.dataset.w === w && btn.dataset.h === h);
+        const presetMax = String(Math.max(Number(btn.dataset.w) || 0, Number(btn.dataset.h) || 0));
+        btn.classList.toggle("is-active", presetMax === maxEdge);
       });
     };
     wEl?.addEventListener("input", syncActive);
     hEl?.addEventListener("input", syncActive);
+    $("export-aspect-ratio")?.addEventListener("change", () => {
+      const maxEdge = Math.max(Number(wEl?.value) || 1200, Number(hEl?.value) || 1200);
+      applyAspectToExportSize(maxEdge);
+      syncActive();
+      persistVideoSettings();
+    });
     syncActive();
   }
 

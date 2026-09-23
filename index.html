@@ -1907,6 +1907,18 @@
           <p class="hint">Video renders at full size. 4K is 3840² — expect a longer encode.</p>
         </div>
         <div class="field">
+          <label for="export-aspect-ratio">Aspect ratio</label>
+          <select id="export-aspect-ratio">
+            <option value="custom">Custom width × height</option>
+            <option value="square" selected>Square · 1:1</option>
+            <option value="landscape">Landscape · 16:9</option>
+            <option value="portrait">Portrait · 9:16</option>
+            <option value="portrait45">Portrait · 4:5</option>
+            <option value="landscape54">Landscape · 5:4</option>
+          </select>
+          <p class="hint">Presets use the selected ratio with the button as max edge. Choose Custom to type any dimensions.</p>
+        </div>
+        <div class="field">
           <div class="range-row">
             <label for="export-sphere-size">Sphere size</label>
             <span class="val" id="export-sphere-size-val">92%</span>
