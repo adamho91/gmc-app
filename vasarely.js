@@ -608,6 +608,7 @@
     const drawDots = showBlobs && metaMode !== "replace";
     /* No checker + no blobs → leave field empty so only typography shows. */
     const fieldEmpty = !checkerGrid && !showBlobs;
+    const skipFieldMatte = fieldEmpty || S?.isExportTransparentBg?.();
 
     if (sphereMap) {
       const { w: WW, h: HH } = S.getWrapSize();
@@ -643,7 +644,7 @@
       svg.setAttribute("width", String(WW));
       svg.setAttribute("height", String(HH));
 
-      checkerEls = fieldEmpty ? [] : [`<rect width="${WW}" height="${HH}" fill="${bgA}"/>`];
+      checkerEls = skipFieldMatte ? [] : [`<rect width="${WW}" height="${HH}" fill="${bgA}"/>`];
       if (checkerGrid) {
         for (let row = 0; row < ROWS; row++) {
           for (let col = 0; col < COLS; col++) {
@@ -730,8 +731,7 @@
       svg.setAttribute("width", String(Wflat));
       svg.setAttribute("height", String(Hflat));
 
-      const skipFlatMatte = fieldEmpty || (!sphereMap && S?.isExportTransparentBg?.());
-      checkerEls = skipFlatMatte ? [] : [`<rect width="${Wflat}" height="${Hflat}" fill="${bgA}"/>`];
+      checkerEls = skipFieldMatte ? [] : [`<rect width="${Wflat}" height="${Hflat}" fill="${bgA}"/>`];
       if (checkerGrid) {
         for (let row = 0; row < ROWS; row++) {
           for (let col = 0; col < COLS; col++) {

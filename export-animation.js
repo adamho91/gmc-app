@@ -917,6 +917,7 @@
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext("2d", { alpha: false });
+    const matteColor = opts.videoMatteColor || "#ffffff";
     const frameDurationUs = Math.round(1_000_000 / fps);
 
     try {
@@ -932,7 +933,8 @@
           img.onerror = () => rej(new Error(`Failed to load export frame ${i + 1}`));
           img.src = frames[i];
         });
-        ctx.clearRect(0, 0, width, height);
+        ctx.fillStyle = matteColor;
+        ctx.fillRect(0, 0, width, height);
         ctx.drawImage(img, 0, 0, width, height);
 
         const frame = new VideoFrame(canvas, {
@@ -1025,6 +1027,7 @@
       canvas.width = width;
       canvas.height = height;
       const ctx = canvas.getContext("2d", { alpha: false });
+      const matteColor = opts.videoMatteColor || "#ffffff";
       const frameDurationUs = Math.round(1_000_000 / fps);
 
       try {
@@ -1040,7 +1043,8 @@
             img.onerror = () => rej(new Error(`Failed to load export frame ${i + 1}`));
             img.src = frames[i];
           });
-          ctx.clearRect(0, 0, width, height);
+          ctx.fillStyle = matteColor;
+          ctx.fillRect(0, 0, width, height);
           ctx.drawImage(img, 0, 0, width, height);
 
           const frame = new VideoFrame(canvas, {
@@ -1078,6 +1082,7 @@
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext("2d");
+    const matteColor = opts.videoMatteColor || "#ffffff";
     const stream = canvas.captureStream(fps);
     const mime = MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
       ? "video/webm;codecs=vp9"
@@ -1105,7 +1110,8 @@
         img.onerror = rej;
         img.src = frames[i];
       });
-      ctx.clearRect(0, 0, width, height);
+      ctx.fillStyle = matteColor;
+      ctx.fillRect(0, 0, width, height);
       ctx.drawImage(img, 0, 0, width, height);
       const track = stream.getVideoTracks()[0];
       if (track?.requestFrame) track.requestFrame();
@@ -1158,6 +1164,8 @@
       if (!ok) return;
     }
 
+    const exportBackground = readExportBackground();
+    const videoOpts = { ...opts, videoMatteColor: exportBackground.color || "#ffffff" };
     const lottieCapture = kind === "lottie" ? readLottieCaptureOptions(opts) : null;
     const lottieLayerModes = kind === "lottie" ? readLottieLayerModes() : ["all"];
     const lottieFps = lottieCapture?.lottieFps || opts.fps;
@@ -1169,10 +1177,10 @@
       kind === "lottie"
         ? {
             ...lottieCapture,
-            exportBackground: readExportBackground(),
+            exportBackground,
             layerModes: lottieLayerModes,
           }
-        : { exportBackground: readExportBackground(), flattenVideoMatte: true, layerModes: ["all"] };
+        : { exportBackground, flattenVideoMatte: true, layerModes: ["all"] };
     const renderOpts =
       kind === "lottie" && lottieFrameCount !== opts.totalFrames
         ? { ...opts, totalFrames: lottieFrameCount, fps: lottieFps }
@@ -1273,21 +1281,21 @@
         if (kind === "mp4") {
           setStatus(`Encoding MP4 · ${opts.width}×${opts.height} · ${opts.videoQuality}…`);
           setProgress(70);
-          const mp4Blob = await encodeMp4WebCodecs(frames, opts);
+          const mp4Blob = await encodeMp4WebCodecs(frames, videoOpts);
           if (mp4Blob) {
-            downloads.push({ blob: mp4Blob, filename: exportFilename("mp4", opts) });
+            downloads.push({ blob: mp4Blob, filename: exportFilename("mp4", videoOpts) });
           } else {
             throw new Error("MP4 encoding is not supported in this browser (needs Chrome/Edge WebCodecs).");
           }
         } else {
           setStatus(`Encoding WebM · ${opts.width}×${opts.height} · ${opts.videoQuality}…`);
           setProgress(70);
-          let webmBlob = await encodeWebmWebCodecs(frames, opts);
+          let webmBlob = await encodeWebmWebCodecs(frames, videoOpts);
           if (!webmBlob) {
-            webmBlob = await encodeWebmMediaRecorder(frames, opts);
+            webmBlob = await encodeWebmMediaRecorder(frames, videoOpts);
           }
           if (webmBlob) {
-            downloads.push({ blob: webmBlob, filename: exportFilename("webm", opts) });
+            downloads.push({ blob: webmBlob, filename: exportFilename("webm", videoOpts) });
           } else {
             throw new Error("WebM encoding is not supported in this browser.");
           }
