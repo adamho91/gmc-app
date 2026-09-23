@@ -148,15 +148,6 @@
   }
   .btn-gen:hover { background: #ffffff; }
   .btns { display: flex; flex-direction: column; gap: 7px; margin-top: auto; padding-top: 10px; }
-  .btns .png-aspect-control {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    font-size: 10px;
-    font-weight: 400;
-    letter-spacing: 0.06em;
-    color: #888888;
-  }
   .btns button {
     font-family: inherit;
     font-size: 10px;

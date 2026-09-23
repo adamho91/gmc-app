@@ -224,6 +224,10 @@
     syncCustomVisibility();
   }
 
+  function useSharedCanvasAspect() {
+    if (aspectSelect) aspectSelect.value = 'canvas';
+  }
+
   function videoBitrate(width, height, fps, qualityKey, scale = 1) {
     const q = QUALITY[qualityKey] || QUALITY.standard;
     const pixels = width * height;
@@ -887,8 +891,16 @@
   }
 
   restoreSettings();
+  useSharedCanvasAspect();
+  window.addEventListener('gmc-generator-canvas-aspect-change', () => {
+    useSharedCanvasAspect();
+    persistSettings();
+  });
   settingEls.forEach((el) => {
     el.addEventListener('change', () => {
+      if (el === aspectSelect && aspectSelect.value !== 'canvas') {
+        window.GMCGeneratorSetCanvasAspect?.(aspectSelect.value);
+      }
       syncCustomVisibility();
       persistSettings();
     });

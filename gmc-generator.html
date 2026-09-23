@@ -20,6 +20,17 @@
   <h1>gmc generator</h1>
 
   <div class="sec">Canvas</div>
+  <div class="ctrl">
+    <label for="canvasAspect">Aspect ratio</label>
+    <select id="canvasAspect">
+      <option value="custom" selected>Custom width × height</option>
+      <option value="square">Square · 1:1</option>
+      <option value="landscape">Landscape · 16:9</option>
+      <option value="portrait">Portrait · 9:16</option>
+      <option value="portrait45">Portrait · 4:5</option>
+      <option value="landscape54">Landscape · 5:4</option>
+    </select>
+  </div>
   <div class="canvas-size-grid">
     <div class="ctrl">
       <label for="canvasWidth">Width <span id="v-canvas-width">1440</span>px</label>
@@ -324,16 +335,6 @@
   </div>
 
   <div class="btns">
-    <label class="png-aspect-control">PNG aspect
-      <select id="png-aspect">
-        <option value="canvas" selected>Canvas aspect</option>
-        <option value="square">Square · 1:1</option>
-        <option value="landscape">Landscape · 16:9</option>
-        <option value="portrait">Portrait · 9:16</option>
-        <option value="portrait45">Portrait · 4:5</option>
-        <option value="landscape54">Landscape · 5:4</option>
-      </select>
-    </label>
     <button id="btn-save">Save PNG</button>
   </div>
 </div>

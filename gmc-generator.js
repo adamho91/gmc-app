@@ -443,14 +443,61 @@ function setCanvasDimensionLabel(id, value) {
   if (label) label.textContent = Math.round(value);
 }
 
-function resolveAspectDimensions(maxEdge, aspectMode) {
-  const ratio = EXPORT_ASPECT_RATIOS[aspectMode];
-  if (!ratio) return null;
-  const max = clampCanvasDimension(maxEdge || Math.max(canvas.width, canvas.height, DEFAULT_CANVAS_WIDTH));
-  const [rw, rh] = ratio;
-  if (rw >= rh) return { width: max, height: Math.max(1, Math.round(max * rh / rw)) };
-  return { width: Math.max(1, Math.round(max * rw / rh)), height: max };
+function readCanvasAspectRatio() {
+  const mode = document.getElementById('canvasAspect')?.value || 'custom';
+  return EXPORT_ASPECT_RATIOS[mode] || null;
 }
+
+function applyCanvasAspect(anchor = 'width') {
+  const ratio = readCanvasAspectRatio();
+  if (!ratio) return false;
+  const widthInput = document.getElementById('canvasWidth');
+  const heightInput = document.getElementById('canvasHeight');
+  if (!widthInput || !heightInput) return false;
+
+  const [rw, rh] = ratio;
+  if (document.getElementById('canvasPrimitiveLock')?.checked && !isCanvasFreeScaleOn()) {
+    const cols = Math.max(1, parseInt(document.getElementById('cols')?.value, 10) || 40);
+    const rows = Math.max(1, Math.min(MAX_GRID_AXIS, Math.round(cols * rh / rw)));
+    syncRowsControl(rows);
+    setCanvasDimensionsFromGrid();
+    return true;
+  }
+
+  if (anchor === 'height') {
+    const h = clampCanvasDimension(heightInput.value, DEFAULT_CANVAS_HEIGHT);
+    const w = clampCanvasDimension(h * rw / rh, DEFAULT_CANVAS_WIDTH);
+    widthInput.value = w;
+    heightInput.value = h;
+    setCanvasDimensionLabel('v-canvas-width', w);
+    setCanvasDimensionLabel('v-canvas-height', h);
+    return true;
+  }
+
+  const w = clampCanvasDimension(widthInput.value, DEFAULT_CANVAS_WIDTH);
+  const h = clampCanvasDimension(w * rh / rw, DEFAULT_CANVAS_HEIGHT);
+  widthInput.value = w;
+  heightInput.value = h;
+  setCanvasDimensionLabel('v-canvas-width', w);
+  setCanvasDimensionLabel('v-canvas-height', h);
+  return true;
+}
+
+function notifyCanvasAspectChanged(mode) {
+  window.dispatchEvent(new CustomEvent('gmc-generator-canvas-aspect-change', { detail: { mode } }));
+}
+
+window.GMCGeneratorSetCanvasAspect = function (mode, anchor = 'width') {
+  const select = document.getElementById('canvasAspect');
+  if (!select || !EXPORT_ASPECT_RATIOS[mode]) return false;
+  select.value = mode;
+  applyCanvasAspect(anchor);
+  normalizeCanvasDimensionInputs();
+  saveCurrentState();
+  draw();
+  notifyCanvasAspectChanged(mode);
+  return true;
+};
 
 const MAX_GRID_AXIS = 200;
 
@@ -1315,7 +1362,7 @@ for (const [id, valId] of Object.entries(SLIDERS)) {
     vl.textContent = parseFloat(el.value).toFixed(el.step && parseFloat(el.step) < 1 ? 2 : 0);
     if (id === 'cellSize' || id === 'cols' || id === 'rows') {
       if (document.getElementById('canvasPrimitiveLock')?.checked && !isCanvasFreeScaleOn()) {
-        setCanvasDimensionsFromGrid();
+        if (!applyCanvasAspect('width')) setCanvasDimensionsFromGrid();
       }
     }
     draw();
@@ -1324,14 +1371,23 @@ for (const [id, valId] of Object.entries(SLIDERS)) {
 
 ['canvasWidth','canvasHeight'].forEach(id => {
   document.getElementById(id)?.addEventListener('change', () => {
+    applyCanvasAspect(id === 'canvasHeight' ? 'height' : 'width');
     normalizeCanvasDimensionInputs();
     saveCurrentState();
     draw();
   });
 });
 
-['checkerStyle','palette','patType','patColor','patBlend','warpType','metaMode','metaColor','metaStroke','png-aspect'].forEach(id => {
+['checkerStyle','palette','patType','patColor','patBlend','warpType','metaMode','metaColor','metaStroke'].forEach(id => {
   document.getElementById(id).addEventListener('change', () => { saveCurrentState(); draw(); });
+});
+
+document.getElementById('canvasAspect')?.addEventListener('change', () => {
+  applyCanvasAspect('width');
+  normalizeCanvasDimensionInputs();
+  saveCurrentState();
+  draw();
+  notifyCanvasAspectChanged(document.getElementById('canvasAspect')?.value || 'custom');
 });
 
 document.getElementById('dotOsc').addEventListener('change', () => { saveCurrentState(); draw(); });
@@ -1379,7 +1435,7 @@ document.getElementById('canvasPrimitiveLock').addEventListener('change', () => 
   if (document.getElementById('canvasPrimitiveLock').checked) {
     const free = document.getElementById('canvasFreeScale');
     if (free) free.checked = false;
-    setCanvasDimensionsFromGrid();
+    if (!applyCanvasAspect('width')) setCanvasDimensionsFromGrid();
   }
   syncCanvasScaleUi();
   normalizeCanvasDimensionInputs();
@@ -1392,6 +1448,7 @@ document.getElementById('canvasFreeScale')?.addEventListener('change', () => {
     if (lock) lock.checked = false;
   }
   syncCanvasScaleUi();
+  applyCanvasAspect('width');
   normalizeCanvasDimensionInputs();
   saveCurrentState();
   draw();
@@ -1406,14 +1463,10 @@ document.getElementById('btn-gen').addEventListener('click', () => {
   draw(Math.floor(Math.random() * 0xFFFFFF));
 });
 document.getElementById('btn-save').addEventListener('click', () => {
-  const aspectMode = document.getElementById('png-aspect')?.value || 'canvas';
-  const exportSize = resolveAspectDimensions(Math.max(canvas.width, canvas.height), aspectMode);
-  if (exportSize) draw(undefined, { exportWidth: exportSize.width, exportHeight: exportSize.height });
   const a = document.createElement('a');
   a.download = `gmc_${currentSeed}.png`;
   a.href = canvas.toDataURL('image/png');
   a.click();
-  if (exportSize) draw(currentSeed);
 });
 function buildSvgString() {
   const d = canvas._svgData;
@@ -1471,7 +1524,7 @@ document.getElementById('btn-svg-copy').addEventListener('click', () => {
 
 const ALL_SLIDER_IDS = Object.keys(SLIDERS);
 const META_STROKE_IDS = new Set(['ends', 'deep', 'mix_deep', 'family_random', 'all_swatches', 'black', 'legacy_mid']);
-const ALL_SELECT_IDS = ['checkerStyle','palette','patType','patColor','patBlend','warpType','metaMode','metaColor','metaStroke','png-aspect'];
+const ALL_SELECT_IDS = ['canvasAspect','checkerStyle','palette','patType','patColor','patBlend','warpType','metaMode','metaColor','metaStroke'];
 const ALL_CHECKBOX_IDS = ['canvasPrimitiveLock', 'canvasFreeScale', 'canvasKeepSymmetric', 'checkerGrid', 'dotOsc', 'warpOsc', 'flowIn', 'flowInOut', 'soundIn', 'mouseIn', 'animLoopable'];
 const LS_STATE_KEY   = 'gmc_state';
 const LS_PRESETS_KEY = 'gmc_presets';
