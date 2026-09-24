@@ -363,7 +363,7 @@ function isAnimLoopableOn() {
 
 function readLoopablePeriod() {
   const d = Number(document.getElementById('video-duration')?.value);
-  return Math.max(1, Math.min(30, Number.isFinite(d) && d > 0 ? d : 3));
+  return Math.max(1, Math.min(180, Number.isFinite(d) && d > 0 ? d : 3));
 }
 
 /** Map wall time into 0 → period/2 → 0 so a looping clip joins at the start. */

@@ -165,7 +165,7 @@
   }
 
   function readSettings() {
-    const duration = Math.max(1, Math.min(30, Number(durationInput.value) || 3));
+    const duration = Math.max(1, Math.min(180, Number(durationInput.value) || 3));
     const fps = Math.max(12, Math.min(60, Math.round(Number(fpsInput.value) || 24)));
     const sizeMode = sizeSelect ? sizeSelect.value : '2000';
     let targetPx = 2000;
